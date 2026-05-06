@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+@theme {
+  --color-galeri-yesil: #2ECC71;
+}

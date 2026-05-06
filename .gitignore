@@ -1,0 +1,18 @@
+# Vue/Frontend gereksizlikleri
+node_modules/
+dist/
+.env.local
+.env.*.local
+
+# Go/Backend gereksizlikleri
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# IDE/Sistem dosyaları
+.vscode/
+.idea/
+.DS_Store
