@@ -35,11 +35,17 @@ type Workshop struct {
     Title          string  `json:"title"`
     Description    string  `json:"description"`
     InstructorName string  `json:"instructorName"` 
-    Date           string  `json:"date"`
     Location       string  `json:"location"`
     Capacity       int     `json:"capacity"`
     Price          float64 `json:"price"`
     ImageUrl       string  `json:"image"`
+    AvailableDates string  `json:"availableDates"`
+}
+type EnrollmentRequest struct {
+    Email            string `json:"email"`
+    WorkshopId       int    `json:"workshopId"`
+    ParticipantCount int    `json:"participantCount"`
+    ReservedDate     string `json:"reservedDate"`
 }
 
 
@@ -207,6 +213,14 @@ func getUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 
 // ! PROFİL BİLGİLERİNİ GÜNCELLEME
 func updateProfileHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "PUT, POST, GET, DELETE, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+    if r.Method == "OPTIONS" {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
     // 1. Frontend'den gelen güncel bilgileri oku
     var u User
     err := json.NewDecoder(r.Body).Decode(&u)
@@ -296,7 +310,8 @@ func getWorkshopsHandler(w http.ResponseWriter, r *http.Request) {
         SELECT 
             w.Id, w.Title, ISNULL(w.Description, ''), 
             (u.FirstName + ' ' + u.LastName) as InstructorName, 
-            w.Date, w.Location, w.Capacity, w.Price, w.ImageUrl 
+            ISNULL(w.AvailableDates, ''), 
+            w.Location, w.Capacity, w.Price, w.ImageUrl 
         FROM Workshops w
         JOIN Users u ON w.InstructorID = u.UserID
     `
@@ -310,12 +325,23 @@ func getWorkshopsHandler(w http.ResponseWriter, r *http.Request) {
     workshops := []Workshop{}
     for rows.Next() {
         var ws Workshop
-        var dateVal time.Time
-        err := rows.Scan(&ws.Id, &ws.Title, &ws.Description, &ws.InstructorName, &dateVal, &ws.Location, &ws.Capacity, &ws.Price, &ws.ImageUrl)
+        err := rows.Scan(
+            &ws.Id, 
+            &ws.Title, 
+            &ws.Description, 
+            &ws.InstructorName, 
+            &ws.AvailableDates, // SQL'deki w.AvailableDates buraya gelir
+            &ws.Location, 
+            &ws.Capacity, 
+            &ws.Price, 
+            &ws.ImageUrl,
+        )
+        
         if err != nil {
+            fmt.Println("Scan hatası:", err) 
             continue
         }
-        ws.Date = dateVal.Format("02.01.2006 15:04")
+        
         workshops = append(workshops, ws)
     }
 
@@ -450,8 +476,152 @@ func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// ! ATÖLYEYE KAYIT OLMA
+func enrollWorkshopHandler(w http.ResponseWriter, r *http.Request) {
+    var req EnrollmentRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "Geçersiz veri", http.StatusBadRequest)
+        return
+    }
+
+    connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
+    db, err := sql.Open("sqlserver", connString)
+    if err != nil {
+        http.Error(w, "Veritabanı bağlantı hatası", http.StatusInternalServerError)
+        return
+    }
+    defer db.Close()
+
+    // Veritabanına kayıt ekleme (Katılımcı sayısı ve Tarih dahil)
+    query := `INSERT INTO WorkshopEnrollments (UserEmail, WorkshopId, ParticipantCount, ReservedDate) 
+              VALUES (@p1, @p2, @p3, @p4)`
+    
+    _, err = db.Exec(query, req.Email, req.WorkshopId, req.ParticipantCount, req.ReservedDate)
+    if err != nil {
+        http.Error(w, "Rezervasyon oluşturulamadı. Lütfen tekrar deneyin.", http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyonunuz başarıyla oluşturuldu! 🎉"})
+}
 
 
+// ! KULLANICININ ATÖLYE KAYITLARINI GETİRME
+func getUserEnrollmentsHandler(w http.ResponseWriter, r *http.Request) {
+    email := r.URL.Query().Get("email")
+    if email == "" {
+        http.Error(w, "Email parametresi gerekli", http.StatusBadRequest)
+        return
+    }
+
+    connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
+    db, err := sql.Open("sqlserver", connString)
+    if err != nil {
+        http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+        return
+    }
+    defer db.Close()
+
+    query := `
+        SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, e.CreatedAt, w.Location, w.AvailableDates
+        FROM WorkshopEnrollments e
+        JOIN Workshops w ON e.WorkshopId = w.Id
+        WHERE e.UserEmail = @p1
+        ORDER BY e.CreatedAt DESC`
+
+    rows, err := db.Query(query, email)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    defer rows.Close()
+
+    var enrollments []map[string]interface{}
+    for rows.Next() {
+        var id, pCount int
+        var title, rDate, cAt, location, aDates string
+        rows.Scan(&id, &title, &pCount, &rDate, &cAt, &location, &aDates)
+        
+        enrollments = append(enrollments, map[string]interface{}{
+            "id":               id,
+            "workshopTitle":    title,
+            "participantCount": pCount,
+            "reservedDate":     rDate,
+            "createdAt":        cAt,
+            "location":         location,
+            "availableDates":   aDates,
+        })
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(enrollments)
+}
+
+
+// ! ATÖLYE KAYIT BİLGİLERİNİ GÜNCELLEME
+func updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPut {
+        http.Error(w, "Sadece PUT metodu destekleniyor", http.StatusMethodNotAllowed)
+        return
+    }
+
+    var data struct {
+        ID               int    `json:"id"`
+        ParticipantCount int    `json:"participantCount"`
+        ReservedDate     string `json:"reservedDate"`
+    }
+    json.NewDecoder(r.Body).Decode(&data)
+
+    connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
+    db, err := sql.Open("sqlserver", connString)
+    if err != nil {
+        http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+        return
+    }
+    defer db.Close()
+
+    query := "UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2 WHERE Id = @p3"
+    _, err = db.Exec(query, data.ParticipantCount, data.ReservedDate, data.ID)
+
+    if err != nil {
+        http.Error(w, "Güncelleme hatası: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon başarıyla güncellendi"})
+}
+
+
+// ! ATÖLYE KAYIT SİLME
+func deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodDelete {
+        http.Error(w, "Sadece DELETE metodu destekleniyor", http.StatusMethodNotAllowed)
+        return
+    }
+
+    id := r.URL.Query().Get("id")
+
+    connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
+    db, err := sql.Open("sqlserver", connString)
+    if err != nil {
+        http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+        return
+    }
+    defer db.Close()
+
+    query := "DELETE FROM WorkshopEnrollments WHERE Id = @p1"
+    _, err = db.Exec(query, id)
+
+    if err != nil {
+        http.Error(w, "Silme hatası: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon başarıyla iptal edildi"})
+}
 
 
 
@@ -473,8 +643,17 @@ func main() {
     mux.HandleFunc("/favorites/remove", deleteFavoriteHandler)
     mux.HandleFunc("/favorites/check", checkFavoriteHandler)
     mux.HandleFunc("/favorites/list", getUserFavoritesHandler)
+    mux.HandleFunc("/workshops/enroll", enrollWorkshopHandler)
+    mux.HandleFunc("/user-enrollments", getUserEnrollmentsHandler)
+    mux.HandleFunc("/update-enrollment", updateEnrollmentHandler)
+    mux.HandleFunc("/delete-enrollment", deleteEnrollmentHandler)
 
-	handler := cors.Default().Handler(mux)
+    handler := cors.New(cors.Options{
+        AllowedOrigins:   []string{"http://localhost:5173"}, // Vue'nun çalıştığı adres
+        AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        AllowedHeaders:   []string{"Content-Type", "Authorization"},
+        AllowCredentials: true,
+    }).Handler(mux)
 	fmt.Println("Backend 8080 portunda çalışıyor...")
 	log.Fatal(http.ListenAndServe(":8080", handler))
 }

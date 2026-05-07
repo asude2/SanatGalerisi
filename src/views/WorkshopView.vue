@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 pb-20">
     <header class="bg-white border-b p-10 mb-10">
       <div class="container mx-auto">
-        <button @click="router.push('/')" class="text-blue-600 font-bold mb-4 flex items-center gap-2">⬅️ Galeriye Dön</button>
+        <button @click="router.push('/')" class="text-blue-600 font-bold mb-4 flex items-center gap-2 cursor-pointer">⬅️ Galeriye Dön</button>
         <h1 class="text-5xl font-black text-gray-900">Atölyeler & Etkinlikler</h1>
         <p class="text-gray-500 mt-2 text-lg">Sanatla iç içe eğitimler ve söyleşiler seni bekliyor.</p>
       </div>
