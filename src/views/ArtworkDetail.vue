@@ -36,8 +36,8 @@
                 <p class="text-gray-400 text-sm uppercase font-bold tracking-tighter">Fiyat</p>
                 <p class="text-4xl font-black text-blue-600">{{ artwork.price.toLocaleString() }} ₺</p>
               </div>
-              <button class="bg-blue-600 text-white px-10 py-5 rounded-2xl font-bold text-xl hover:bg-blue-700 hover:scale-105 transition-all shadow-xl shadow-blue-100">
-                Satın Al / Rezerve Et
+              <button @click="buyArtwork" class="bg-blue-600 text-white px-10 py-5 rounded-2xl font-bold text-xl hover:bg-blue-700 hover:scale-105 transition-all shadow-xl shadow-blue-100">
+                Satın Al 
               </button>
             </div>
           </div>
@@ -55,12 +55,47 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { jwtDecode } from 'jwt-decode';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 
 const route = useRoute();
 const router = useRouter();
 const artwork = ref(null);
+
+
+
+// Eser Satın AlmaFonksiyonu
+const buyArtwork = async () => {
+  const token = localStorage.getItem('userToken');
+  if (!token) {
+    alert("Lütfen önce giriş yapın! 👤");
+    return;
+  }
+
+  if (!confirm(`${artwork.value.title} eserini satın almak istiyor musunuz?`)) return;
+
+  try {
+    const decoded = jwtDecode(token);
+    await axios.post('http://localhost:8080/artworks/buy', {
+      email: decoded.email,
+      artworkId: artwork.value.id,
+      price: artwork.value.price
+    });
+
+    alert("Satın alma başarılı! Siparişlerinize yönlendiriliyorsunuz.");
+    router.push('/profile'); // Hemen profile gitsin ki görsün
+  } catch (error) {
+    if (error.response && error.response.status === 409) {
+      alert("Maalesef bu eser çoktan satılmış! 😔");
+    } else {
+      alert("Satın alma sırasında bir hata oluştu.");
+    }
+  }
+};
+
+
+
 
 onMounted(async () => {
   try {
@@ -72,5 +107,6 @@ onMounted(async () => {
   } catch (error) {
     console.error("Detaylar yüklenemedi:", error);
   }
+
 });
 </script>

@@ -6,6 +6,9 @@ IF OBJECT_ID('Favorites', 'U') IS NOT NULL DROP TABLE Favorites;
 IF OBJECT_ID('Workshops', 'U') IS NOT NULL DROP TABLE Workshops;
 IF OBJECT_ID('Artworks', 'U') IS NOT NULL DROP TABLE Artworks;
 IF OBJECT_ID('Artists', 'U') IS NOT NULL DROP TABLE Artists;
+IF OBJECT_ID('ArtworkPurchases', 'U') IS NOT NULL DROP TABLE ArtworkPurchases;
+
+
 GO
 
 -- CREATE TABLE Users (
@@ -66,6 +69,16 @@ CREATE TABLE WorkshopEnrollments (
     ReservedDate NVARCHAR(100) NOT NULL,   
     CreatedAt DATETIME DEFAULT GETDATE(),
     CONSTRAINT FK_Enrollment_Workshop FOREIGN KEY (WorkshopId) REFERENCES Workshops(Id)
+);
+
+CREATE TABLE ArtworkPurchases (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    UserEmail NVARCHAR(100) NOT NULL,
+    ArtworkId INT NOT NULL,
+    PurchasePrice DECIMAL(18, 2) NOT NULL, 
+    Status NVARCHAR(50) DEFAULT 'Hazırlanıyor', 
+    CreatedAt DATETIME DEFAULT GETDATE(),
+    CONSTRAINT FK_Purchase_Artwork FOREIGN KEY (ArtworkId) REFERENCES Artworks(Id)
 );
 
 

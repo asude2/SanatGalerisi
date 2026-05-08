@@ -11,7 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	_ "github.com/microsoft/go-mssqldb"
-	"github.com/rs/cors"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -46,6 +45,11 @@ type EnrollmentRequest struct {
     WorkshopId       int    `json:"workshopId"`
     ParticipantCount int    `json:"participantCount"`
     ReservedDate     string `json:"reservedDate"`
+}
+type BuyArtwork struct {
+    Email            string `json:"email"`
+    ArtworkId        int    `json:"artworkId"`
+    Price            float64 `json:"price"`
 }
 
 
@@ -87,6 +91,13 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 
 // ! GİRİŞ
 func loginHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+    if r.Method == "OPTIONS" {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
     var creds struct {
         Email    string `json:"email"`
         Password string `json:"password"`
@@ -624,6 +635,75 @@ func deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// ! ESER SATIN ALMA
+func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+    if r.Method == "OPTIONS" { return }
+
+    var req BuyArtwork
+    json.NewDecoder(r.Body).Decode(&req)
+
+    db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
+
+    // --- Eser zaten satılmış mı? ---
+    var exists int
+    checkQuery := "SELECT COUNT(*) FROM ArtworkPurchases WHERE ArtworkId = @p1"
+    db.QueryRow(checkQuery, req.ArtworkId).Scan(&exists)
+
+    if exists > 0 {
+        // 409 Conflict: "Bu eser zaten satılmış/alınmış"
+        w.WriteHeader(http.StatusConflict)
+        json.NewEncoder(w).Encode(map[string]string{"message": "Bu eser daha önce satın alınmış! ❌"})
+        return
+    }
+
+    // satılmadıysa devam et
+    query := `INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice) VALUES (@p1, @p2, @p3)`
+    _, err := db.Exec(query, req.Email, req.ArtworkId, req.Price)
+
+    if err != nil {
+        http.Error(w, "DB Hatası: "+err.Error(), 500)
+        return
+    }
+    json.NewEncoder(w).Encode(map[string]string{"message": "Eser başarıyla satın alındı! 🎉"})
+}
+
+
+// ! KULLANICININ SATIN ALDIĞI ESERLERİ GETİRME
+func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    email := r.URL.Query().Get("email")
+
+    db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
+
+    // Artworks tablosuyla birleştirip başlığı ve resmi de alıyoruz
+    query := `
+        SELECT p.Id, a.Title, p.PurchasePrice, p.Status, p.CreatedAt, a.ImageUrl 
+        FROM ArtworkPurchases p
+        JOIN Artworks a ON p.ArtworkId = a.Id
+        WHERE p.UserEmail = @p1`
+
+    rows, _ := db.Query(query, email)
+    defer rows.Close()
+
+    var results []map[string]interface{}
+    for rows.Next() {
+        var id int
+        var title, status, cAt, img string
+        var price float64
+        rows.Scan(&id, &title, &price, &status, &cAt, &img)
+        results = append(results, map[string]interface{}{
+            "id": id, "title": title, "price": price, "status": status, "date": cAt, "image": img,
+        })
+    }
+    json.NewEncoder(w).Encode(results)
+}
+
+
 
 
 
@@ -647,13 +727,28 @@ func main() {
     mux.HandleFunc("/user-enrollments", getUserEnrollmentsHandler)
     mux.HandleFunc("/update-enrollment", updateEnrollmentHandler)
     mux.HandleFunc("/delete-enrollment", deleteEnrollmentHandler)
+    mux.HandleFunc("/artworks/buy", buyArtworkHandler)
+    mux.HandleFunc("/user-purchases", getUserPurchasesHandler)
 
-    handler := cors.New(cors.Options{
-        AllowedOrigins:   []string{"http://localhost:5173"}, // Vue'nun çalıştığı adres
-        AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-        AllowedHeaders:   []string{"Content-Type", "Authorization"},
-        AllowCredentials: true,
-    }).Handler(mux)
-	fmt.Println("Backend 8080 portunda çalışıyor...")
-	log.Fatal(http.ListenAndServe(":8080", handler))
+    finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*") // Güvenlik için daha sonra frontend adresini yazabilirsin
+        w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+        // Eğer tarayıcı "izin var mı?" (OPTIONS) diye soruyorsa, direkt OK de ve bitir.
+        if r.Method == "OPTIONS" {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+
+        // Değilse normal akışa devam et
+        mux.ServeHTTP(w, r)
+    })
+
+    fmt.Println("Server 8080 portunda çalışıyor...")
+    // ListenAndServe içine 'mux' yerine 'finalHandler' yazıyoruz!
+    err := http.ListenAndServe(":8080", finalHandler)
+    if err != nil {
+        log.Fatal(err)
+    }
 }

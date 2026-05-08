@@ -97,6 +97,67 @@
             </div>
           </div>
 
+
+
+
+
+
+
+
+
+
+
+
+
+              <div class="mt-12 border-t-2 border-gray-100 pt-8">
+                <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                  🛍️ Satın Aldığım Eserler
+                </h3>
+
+                <div v-if="boughtArtworks.length > 0" class="space-y-4">
+                  <div v-for="item in boughtArtworks" :key="item.id" 
+                      class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
+                    
+                    <div class="flex items-center space-x-4">
+                      <img :src="item.image" class="w-20 h-20 object-cover rounded-xl shadow-sm">
+                      <div>
+                        <h4 class="text-lg font-bold text-gray-900">{{ item.title }}</h4>
+                        <p class="text-blue-600 font-semibold">{{ item.price }} TL</p>
+                        <p class="text-xs text-gray-400">{{ new Date(item.date).toLocaleDateString('tr-TR') }}</p>
+                      </div>
+                    </div>
+
+                    <div class="text-right">
+                      <span 
+                        :class="{
+                          'bg-amber-100 text-amber-700': item.status === 'Hazırlanıyor',
+                          'bg-blue-100 text-blue-700': item.status === 'Kargoda',
+                          'bg-green-100 text-green-700': item.status === 'Teslim Edildi'
+                        }"
+                        class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest"
+                      >
+                        {{ item.status }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+                  <p class="text-gray-400 italic">Henüz bir eser satın almadınız.</p>
+                </div>
+              </div>
+
+
+
+
+
+
+
+
+
+
+
+
           <div class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
             <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -214,6 +275,7 @@ const favorites = ref([]);
 const enrollments = ref([]);
 const showEditModal = ref(false);
 const selectedEnrollment = ref(null);
+const boughtArtworks = ref([]);
 
 const passwords = ref({
   oldPassword: '',
@@ -233,9 +295,11 @@ onMounted(async () => {
     favorites.value = favRes.data || [];
 
     await fetchEnrollments();
+    await fetchArtworkPurchases();
   } catch (error) {
     console.error("Veriler yüklenemedi:", error);
   }
+
 });
 
 // Profil Güncelleme
@@ -315,4 +379,19 @@ const updateEnrollment = async () => {
     alert("Güncelleme başarısız.");
   }
 };
+
+// Satın alınan eserleri getir
+const fetchArtworkPurchases = async () => {
+  const email = localStorage.getItem('userEmail');
+  try {
+    const res = await axios.get(`http://localhost:8080/user-purchases?email=${email}`);
+    boughtArtworks.value = res.data || [];
+  } catch (error) {
+    console.error("Siparişler yüklenemedi:", error);
+  }
+};
+
+onMounted(async () => {
+  await fetchArtworkPurchases();
+});
 </script>
