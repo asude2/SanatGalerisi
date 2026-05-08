@@ -26,7 +26,7 @@
     <div class="mt-10 px-10">
         <button 
           @click="handleLogout" 
-          class="flex justify-center gap-2 px-5 bg-red-50 text-red-600 font-bold py-3 rounded-2xl hover:bg-red-100 transition-all border border-red-100"
+          class="flex justify-center gap-2 px-5 bg-red-50 text-red-600 font-bold py-3 rounded-2xl hover:bg-red-100 transition-all border border-red-100 cursor-pointer"
         >
           <span>🚪</span> Çıkış Yap
         </button>
