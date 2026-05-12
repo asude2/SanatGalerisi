@@ -34,22 +34,39 @@
 
     <main class="container mx-auto -mt-8 px-4 pb-20">
       <!-- Üst Bar: Arama ve Filtreleme -->
-      <div class="bg-white p-4 rounded-2xl shadow-sm mb-12 flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div class="relative w-full md:w-96">
-          <input 
-            v-model="searchQuery" 
-            type="text" 
-            placeholder="Eser veya sanatçı ara..." 
-            class="w-full p-3 pl-12 bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-galeri-yesil/20" 
-          />
-          <span class="absolute left-4 top-3">🔍</span>
-        </div>
-        
-        <div class="flex gap-4">
-          <button class="px-6 py-2 bg-gray-100 rounded-xl font-semibold hover:bg-gray-200">Kategoriler</button>
-          <button class="px-6 py-2 bg-gray-100 rounded-xl font-semibold hover:bg-gray-200">Sırala</button>
-        </div>
-      </div>
+      <div class="bg-white p-6 rounded-2xl shadow-sm mb-12 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-100">
+  
+            <div class="relative w-full md:w-96">
+              <input 
+                v-model="searchQuery" 
+                type="text" 
+                placeholder="Eser veya sanatçı ara..." 
+                class="w-full p-4 pl-12 bg-gray-50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-galeri-yesil/20 border border-transparent focus:border-galeri-yesil/30 transition-all" 
+              />
+              <span class="absolute left-4 top-4">🔍</span>
+            </div>
+            
+            <div class="flex flex-wrap gap-4 w-full md:w-auto justify-end">
+              <template v-if="userRole === 'Instructor'">
+                <button 
+                  @click="router.push('/add-artwork')" 
+                  class="bg-galeri-yesil text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-green-100 hover:scale-105 transition-transform"
+                >
+                  + Eser Ekle
+                </button>
+                <button 
+                  @click="router.push('/add-workshop')" 
+                  class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:scale-105 transition-transform"
+                >
+                  + Atölye Oluştur
+                </button>
+              </template>
+
+              <button class="px-6 py-3 bg-gray-50 text-gray-600 rounded-2xl font-bold hover:bg-gray-100 border border-gray-100">
+                Kategoriler
+              </button>
+            </div>
+          </div>
 
       <!-- Eser Listesi (Grid Arama Barının Dışında Olmalı) -->
       <div v-if="filteredArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
@@ -60,7 +77,7 @@
           :title="artwork.title" 
           :artist="artwork.artist" 
           :price="artwork.price" 
-          :image="artwork.image"
+          :image="artwork.imageUrl"
         />
       </div>
 
@@ -72,13 +89,14 @@
         </p>
       </div>
     </main>
+
   </div>
 </template>
 
 
 
 <script setup>
-import { ref, onMounted, computed } from 'vue' // computed eklendi
+import { ref, onMounted, computed } from 'vue' 
 import { useRouter } from 'vue-router'
 import { jwtDecode } from 'jwt-decode'
 import axios from 'axios'
@@ -86,6 +104,7 @@ import ArtworkCard from '../components/ArtworkCard.vue'
 
 const router = useRouter()
 const userName = ref('Misafir')
+const userRole = ref('')
 const artworks = ref([])
 const searchQuery = ref('') // Arama terimi için
 
@@ -123,12 +142,14 @@ onMounted(() => {
       console.error('Token çözülemedi:', error)
     }
   }
+  userRole.value = localStorage.getItem('userRole')
   fetchArtworks()
 })
 
 const handleLogout = () => {
   localStorage.removeItem('userToken')
-  localStorage.removeItem('userEmail') // Bunu da temizleyelim
+  localStorage.removeItem('userEmail') 
+  localStorage.removeItem('userRole'); 
   router.push('/login')
 }
 

@@ -45,16 +45,14 @@ const handleLogin = async () => {
   try {
     const response = await axios.post('http://localhost:8080/login', loginData.value)
     
-    if (response.data && response.data.token) {
       localStorage.setItem('userToken', response.data.token) 
-      
+      localStorage.setItem('userRole', response.data.role);
       localStorage.setItem('userEmail', loginData.value.email) 
       
       alert('Giriş başarılı!')
       router.push('/')
-    }
   } catch (error) {
-    alert('Hata: ' + (error.response?.data || 'Giriş yapılamadı'))
+    alert("Giriş hatası!");
   }
 }
 </script>

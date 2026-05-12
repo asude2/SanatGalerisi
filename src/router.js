@@ -8,6 +8,8 @@ import WorkshopView from './views/WorkshopView.vue'
 import ArtworkCard from './components/ArtworkCard.vue'
 import ArtistDetail from './views/ArtistDetail.vue';
 import WorkshopDetail from './views/WorkshopDetail.vue';
+import AddArtwork from './views/AddArtwork.vue'
+import AddWorkshop from './views/AddWorkshop.vue'
 
 
 
@@ -55,7 +57,17 @@ const routes = [
   name: 'WorkshopDetail',
   component: WorkshopDetail,
   props: true
-}
+  },
+  {
+    path: '/add-artwork',
+    name: 'AddArtwork',
+    component: AddArtwork
+  },
+  { 
+    path: '/add-workshop', 
+    name: 'AddWorkshop', 
+    component: AddWorkshop 
+  },
 ]
 
 const router = createRouter({

@@ -18,7 +18,7 @@
               <span class="text-blue-600 font-bold tracking-widest uppercase text-sm">Sanat Eseri Detayı</span>
               <h1 class="text-5xl font-black text-gray-900 mt-2">{{ artwork.title }}</h1>
               <p class="text-2xl text-gray-500 font-medium mt-1 flex items-center gap-4">Sanatçı: <span class="text-gray-800">{{ artwork.artist }}</span>
-                <button @click="router.push('/artist/' + artwork.artist)"class="text-sm bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-bold hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+                <button @click="showArtistModal = true" class="text-sm bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-bold hover:bg-blue-600 hover:text-white transition-all shadow-sm">
                   Sanatçıyı Görüntüle 🔍
                 </button>
               </p>
@@ -50,11 +50,44 @@
       <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600"></div>
       <p class="text-2xl text-gray-500 font-medium tracking-tight">Eser detayları yükleniyor...</p>
     </div>
+
+    <!-- Sanatçı Bilgisi Modal -->
+    <div v-if="showArtistModal && artistInfo" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-3xl font-bold text-gray-900">{{ artistInfo.name }}</h3>
+          <button @click="showArtistModal = false" class="text-3xl text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        <div class="space-y-6">
+          <div>
+            <h4 class="text-lg font-bold text-gray-700 mb-3">Biyografi</h4>
+            <p class="text-gray-600 leading-relaxed text-base whitespace-pre-wrap">
+              {{ artistInfo.biography || 'Bu sanatçı henüz bir biyografi eklememiş.' }}
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+            <div class="bg-blue-50 rounded-2xl p-4">
+              <p class="text-gray-600 text-sm font-medium uppercase mb-1">Toplam Eserler</p>
+              <p class="text-3xl font-bold text-blue-600">{{ artistInfo.artworksCount }}</p>
+            </div>
+          </div>
+
+          <button 
+            @click="showArtistModal = false" 
+            class="w-full mt-6 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all"
+          >
+            Kapat
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
@@ -62,6 +95,8 @@ import axios from 'axios';
 const route = useRoute();
 const router = useRouter();
 const artwork = ref(null);
+const showArtistModal = ref(false);
+const artistInfo = ref(null);
 
 
 
@@ -93,6 +128,28 @@ const buyArtwork = async () => {
     }
   }
 };
+
+// Sanatçı bilgisini getir
+const fetchArtistInfo = async (artistName) => {
+  try {
+    const response = await axios.get(`http://localhost:8080/artist?name=${encodeURIComponent(artistName)}`);
+    artistInfo.value = response.data;
+  } catch (error) {
+    console.error("Sanatçı bilgisi yüklenemedi:", error);
+    artistInfo.value = {
+      name: artistName,
+      biography: '',
+      artworksCount: 0
+    };
+  }
+};
+
+// Modal açıldığında sanatçı bilgisini yükle
+watch(showArtistModal, (newVal) => {
+  if (newVal && artwork.value) {
+    fetchArtistInfo(artwork.value.artist);
+  }
+});
 
 
 
