@@ -725,10 +725,14 @@ func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
 func createSupportTicketHandler(w http.ResponseWriter, r *http.Request) {
     var req SupportTicket
     json.NewDecoder(r.Body).Decode(&req)
-    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    if err != nil {
+        http.Error(w, "Veritabanı bağlantı hatası", 500)
+        return
+    }
     defer db.Close()
     query := "INSERT INTO SupportTickets (UserEmail, Subject, Message) VALUES (@p1, @p2, @p3)"
-    _, err := db.Exec(query, req.UserEmail, req.Subject, req.Message)
+    _, err = db.Exec(query, req.UserEmail, req.Subject, req.Message)
     if err != nil {
         http.Error(w, err.Error(), 500)
         return
@@ -738,9 +742,17 @@ func createSupportTicketHandler(w http.ResponseWriter, r *http.Request) {
 
 func getSupportTicketsHandler(w http.ResponseWriter, r *http.Request) {
     email := r.URL.Query().Get("email")
-    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    if err != nil {
+        http.Error(w, "Veritabanı bağlantı hatası", 500)
+        return
+    }
     defer db.Close()
-    rows, _ := db.Query("SELECT Id, UserEmail, Subject, Message, Status, CreatedAt FROM SupportTickets WHERE UserEmail = @p1 ORDER BY CreatedAt DESC", email)
+    rows, err := db.Query("SELECT Id, UserEmail, Subject, Message, Status, CreatedAt FROM SupportTickets WHERE UserEmail = @p1 ORDER BY CreatedAt DESC", email)
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
+    }
     defer rows.Close()
     var tickets []SupportTicket
     for rows.Next() {
@@ -757,7 +769,11 @@ func getSupportTicketsHandler(w http.ResponseWriter, r *http.Request) {
 func addCommentHandler(w http.ResponseWriter, r *http.Request) {
     var req Comment
     json.NewDecoder(r.Body).Decode(&req)
-    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    if err != nil {
+        http.Error(w, "Veritabanı bağlantı hatası", 500)
+        return
+    }
     defer db.Close()
 
     var count int
@@ -773,7 +789,7 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     query := "INSERT INTO Comments (UserEmail, TargetType, TargetId, Content, Rating) VALUES (@p1, @p2, @p3, @p4, @p5)"
-    _, err := db.Exec(query, req.UserEmail, req.TargetType, req.TargetId, req.Content, req.Rating)
+    _, err = db.Exec(query, req.UserEmail, req.TargetType, req.TargetId, req.Content, req.Rating)
     if err != nil {
         http.Error(w, err.Error(), 500)
         return
@@ -784,7 +800,11 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
 func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
     targetType := r.URL.Query().Get("type")
     targetId := r.URL.Query().Get("id")
-    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    if err != nil {
+        http.Error(w, "Veritabanı bağlantı hatası", 500)
+        return
+    }
     defer db.Close()
 
     query := `
@@ -793,7 +813,11 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
         FROM Comments c
         WHERE c.TargetType = @p1 AND c.TargetId = @p2
         ORDER BY c.CreatedAt DESC`
-    rows, _ := db.Query(query, targetType, targetId)
+    rows, err := db.Query(query, targetType, targetId)
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
+    }
     defer rows.Close()
     
     var comments []Comment
@@ -811,11 +835,15 @@ func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
         UserEmail string `json:"userEmail"`
     }
     json.NewDecoder(r.Body).Decode(&req)
-    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    if err != nil {
+        http.Error(w, "Veritabanı bağlantı hatası", 500)
+        return
+    }
     defer db.Close()
 
     query := "INSERT INTO CommentHelpfulVotes (CommentId, UserEmail) VALUES (@p1, @p2)"
-    _, err := db.Exec(query, req.CommentId, req.UserEmail)
+    _, err = db.Exec(query, req.CommentId, req.UserEmail)
     if err != nil {
         http.Error(w, "Zaten oy verdiniz", 409)
         return

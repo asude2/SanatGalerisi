@@ -1,4 +1,4 @@
-﻿package main
+package main
 import (
     "database/sql"
     "fmt"
@@ -7,11 +7,11 @@ import (
     _ "github.com/microsoft/go-mssqldb"
 )
 func main() {
-    db, err := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;trusted_connection=yes;encrypt=disable;")
+    db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
     if err != nil { panic(err) }
     defer db.Close()
 
-    content, err := ioutil.ReadFile("database_fixed.sql")
+    content, err := ioutil.ReadFile("database.sql")
     if err != nil { panic(err) }
     
     statements := strings.Split(string(content), "\nGO")

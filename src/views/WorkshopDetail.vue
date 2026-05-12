@@ -83,6 +83,11 @@
           Rezervasyon Oluştur ✨
         </button>
       </div>
+
+      <!-- Yorumlar Bölümü -->
+      <div class="mt-8">
+        <CommentSection targetType="Workshop" :targetId="workshop.id" />
+      </div>
     </div>
   </div>
 </template>
@@ -92,6 +97,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { jwtDecode } from 'jwt-decode' // Token'dan email almak için gerekli
+import CommentSection from '../components/CommentSection.vue'
 
 const route = useRoute()
 const router = useRouter()

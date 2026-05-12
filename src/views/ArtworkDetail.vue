@@ -50,6 +50,11 @@
       <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600"></div>
       <p class="text-2xl text-gray-500 font-medium tracking-tight">Eser detayları yükleniyor...</p>
     </div>
+
+    <!-- Yorumlar Bölümü -->
+    <div v-if="artwork" class="max-w-6xl mx-auto mt-8">
+      <CommentSection targetType="Artwork" :targetId="artwork.id" />
+    </div>
   </div>
 </template>
 
@@ -58,6 +63,7 @@ import { ref, onMounted } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
+import CommentSection from '../components/CommentSection.vue';
 
 const route = useRoute();
 const router = useRouter();

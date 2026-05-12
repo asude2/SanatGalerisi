@@ -12,6 +12,7 @@
             <span class="cursor-pointer border-b-4 border-white pb-1">Eserler</span>
             <span @click="router.push('/workshops')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity">Atölyeler</span>
             <span class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity">Sanatçılar</span>
+            <span @click="router.push('/support')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity flex items-center gap-1">🎧 Destek</span>
           </nav>
           <div class="bg-white text-galeri-yesil p-3 rounded-2xl shadow-inner cursor-pointer">
             <router-link to="/profile" class="cursor-pointer">

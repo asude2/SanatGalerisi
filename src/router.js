@@ -8,9 +8,7 @@ import WorkshopView from './views/WorkshopView.vue'
 import ArtworkCard from './components/ArtworkCard.vue'
 import ArtistDetail from './views/ArtistDetail.vue';
 import WorkshopDetail from './views/WorkshopDetail.vue';
-
-
-
+import SupportView from './views/SupportView.vue';
 
 const routes = [
   { 
@@ -55,7 +53,12 @@ const routes = [
   name: 'WorkshopDetail',
   component: WorkshopDetail,
   props: true
-}
+  },
+  {
+  path: '/support',
+  name: 'Support',
+  component: SupportView
+  }
 ]
 
 const router = createRouter({

@@ -1,8 +1,0 @@
-SELECT TOP (1000) [UserID]
-      ,[FirstName]
-      ,[LastName]
-      ,[Email]
-      ,[Password]
-      ,[Role]
-      ,[CreatedAt]
-  FROM [SanatProjesi].[dbo].[Users]
