@@ -51,8 +51,24 @@ type BuyArtwork struct {
     ArtworkId        int    `json:"artworkId"`
     Price            float64 `json:"price"`
 }
-
-
+type SupportTicket struct {
+    Id        int    `json:"id"`
+    UserEmail string `json:"userEmail"`
+    Subject   string `json:"subject"`
+    Message   string `json:"message"`
+    Status    string `json:"status"`
+    CreatedAt string `json:"createdAt"`
+}
+type Comment struct {
+    Id           int     `json:"id"`
+    UserEmail    string  `json:"userEmail"`
+    TargetType   string  `json:"targetType"` // "Artwork" veya "Workshop"
+    TargetId     int     `json:"targetId"`
+    Content      string  `json:"content"`
+    Rating       int     `json:"rating"` // 1-5 arası (nullable)
+    CreatedAt    string  `json:"createdAt"`
+    HelpfulCount int     `json:"helpfulCount"`
+}
 
 // ! KAYIT
 func registerHandler(w http.ResponseWriter, r *http.Request) {
@@ -703,12 +719,109 @@ func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(results)
 }
 
+// ==========================================
+// ! DESTEK (SUPPORT) MODÜLÜ
+// ==========================================
+func createSupportTicketHandler(w http.ResponseWriter, r *http.Request) {
+    var req SupportTicket
+    json.NewDecoder(r.Body).Decode(&req)
+    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
+    query := "INSERT INTO SupportTickets (UserEmail, Subject, Message) VALUES (@p1, @p2, @p3)"
+    _, err := db.Exec(query, req.UserEmail, req.Subject, req.Message)
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
+    }
+    json.NewEncoder(w).Encode(map[string]string{"message": "Destek talebi oluşturuldu."})
+}
 
+func getSupportTicketsHandler(w http.ResponseWriter, r *http.Request) {
+    email := r.URL.Query().Get("email")
+    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
+    rows, _ := db.Query("SELECT Id, UserEmail, Subject, Message, Status, CreatedAt FROM SupportTickets WHERE UserEmail = @p1 ORDER BY CreatedAt DESC", email)
+    defer rows.Close()
+    var tickets []SupportTicket
+    for rows.Next() {
+        var t SupportTicket
+        rows.Scan(&t.Id, &t.UserEmail, &t.Subject, &t.Message, &t.Status, &t.CreatedAt)
+        tickets = append(tickets, t)
+    }
+    json.NewEncoder(w).Encode(tickets)
+}
 
+// ==========================================
+// ! YORUMLAR (COMMENTS) MODÜLÜ
+// ==========================================
+func addCommentHandler(w http.ResponseWriter, r *http.Request) {
+    var req Comment
+    json.NewDecoder(r.Body).Decode(&req)
+    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
 
+    var count int
+    if req.TargetType == "Artwork" {
+        db.QueryRow("SELECT COUNT(*) FROM ArtworkPurchases WHERE UserEmail = @p1 AND ArtworkId = @p2", req.UserEmail, req.TargetId).Scan(&count)
+    } else if req.TargetType == "Workshop" {
+        db.QueryRow("SELECT COUNT(*) FROM WorkshopEnrollments WHERE UserEmail = @p1 AND WorkshopId = @p2", req.UserEmail, req.TargetId).Scan(&count)
+    }
 
+    if count == 0 {
+        http.Error(w, "Yorum yapmak için eseri satın almış veya etkinliğe katılmış olmalısınız.", http.StatusForbidden)
+        return
+    }
 
+    query := "INSERT INTO Comments (UserEmail, TargetType, TargetId, Content, Rating) VALUES (@p1, @p2, @p3, @p4, @p5)"
+    _, err := db.Exec(query, req.UserEmail, req.TargetType, req.TargetId, req.Content, req.Rating)
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
+    }
+    json.NewEncoder(w).Encode(map[string]string{"message": "Yorumunuz eklendi."})
+}
 
+func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
+    targetType := r.URL.Query().Get("type")
+    targetId := r.URL.Query().Get("id")
+    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
+
+    query := `
+        SELECT c.Id, c.UserEmail, c.TargetType, c.TargetId, c.Content, ISNULL(c.Rating, 0), c.CreatedAt, 
+               (SELECT COUNT(*) FROM CommentHelpfulVotes v WHERE v.CommentId = c.Id) as HelpfulCount
+        FROM Comments c
+        WHERE c.TargetType = @p1 AND c.TargetId = @p2
+        ORDER BY c.CreatedAt DESC`
+    rows, _ := db.Query(query, targetType, targetId)
+    defer rows.Close()
+    
+    var comments []Comment
+    for rows.Next() {
+        var c Comment
+        rows.Scan(&c.Id, &c.UserEmail, &c.TargetType, &c.TargetId, &c.Content, &c.Rating, &c.CreatedAt, &c.HelpfulCount)
+        comments = append(comments, c)
+    }
+    json.NewEncoder(w).Encode(comments)
+}
+
+func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
+    var req struct {
+        CommentId int `json:"commentId"`
+        UserEmail string `json:"userEmail"`
+    }
+    json.NewDecoder(r.Body).Decode(&req)
+    db, _ := sql.Open("sqlserver", "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+    defer db.Close()
+
+    query := "INSERT INTO CommentHelpfulVotes (CommentId, UserEmail) VALUES (@p1, @p2)"
+    _, err := db.Exec(query, req.CommentId, req.UserEmail)
+    if err != nil {
+        http.Error(w, "Zaten oy verdiniz", 409)
+        return
+    }
+    json.NewEncoder(w).Encode(map[string]string{"message": "Faydalı olarak işaretlendi."})
+}
 
 func main() {
 	mux := http.NewServeMux()
@@ -729,6 +842,13 @@ func main() {
     mux.HandleFunc("/delete-enrollment", deleteEnrollmentHandler)
     mux.HandleFunc("/artworks/buy", buyArtworkHandler)
     mux.HandleFunc("/user-purchases", getUserPurchasesHandler)
+
+    // Yeni endpoint kayıtları
+    mux.HandleFunc("/support/create", createSupportTicketHandler)
+    mux.HandleFunc("/support/tickets", getSupportTicketsHandler)
+    mux.HandleFunc("/comments/add", addCommentHandler)
+    mux.HandleFunc("/comments/list", getCommentsHandler)
+    mux.HandleFunc("/comments/helpful", rateCommentHandler)
 
     finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Access-Control-Allow-Origin", "*") // Güvenlik için daha sonra frontend adresini yazabilirsin
