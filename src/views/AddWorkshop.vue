@@ -61,7 +61,7 @@
             <input 
               v-model="workshop.availableDates" 
               type="text" 
-              placeholder="Örn: 15 Haziran, 19:00" 
+              placeholder="Örn: 15 Haziran 19:00" 
               class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-blue-50 transition-all text-lg"
               required
             />

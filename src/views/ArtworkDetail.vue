@@ -5,8 +5,8 @@
         
         <!-- Sol Taraf: Büyük Eser Görseli -->
         <div class="lg:w-1/2 relative bg-gray-200">
-          <img :src="artwork.image" :alt="artwork.title" class="w-full h-full object-cover min-h-[500px]" />
-          <button @click="router.back()" class="absolute top-6 left-6 bg-white/90 p-3 rounded-full shadow-lg hover:bg-white transition-all">
+          <img :src="artwork.imageUrl" :alt="artwork.title" class="w-full h-full object-cover min-h-[500px]" />
+          <button @click="router.back()" class="absolute top-6 left-6 bg-white/90 p-3 rounded-full shadow-lg hover:bg-white transition-all cursor-pointer">
             ⬅️ Geri Dön
           </button>
         </div>
@@ -29,6 +29,21 @@
               <p class="text-gray-600 leading-relaxed text-xl">
                 {{ artwork.description || 'Bu eser için henüz bir açıklama eklenmemiş.' }}
               </p>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <p class="text-gray-400 text-sm uppercase font-bold tracking-tighter mb-2">Kategoriler</p>
+                <div class="flex flex-wrap gap-2">
+                  <span 
+                    v-if="artwork.category" 
+                    class="inline-block bg-blue-100 text-blue-700 px-4 py-2 rounded-full font-semibold text-sm hover:bg-blue-200 transition-all"
+                  >
+                    {{ artwork.category }}
+                  </span>
+                  <span v-else class="text-gray-400 text-sm italic">Kategori belirtilmemiş</span>
+                </div>
+              </div>
             </div>
 
             <div class="flex items-center justify-between pt-4">
@@ -71,6 +86,12 @@
             <div class="bg-blue-50 rounded-2xl p-4">
               <p class="text-gray-600 text-sm font-medium uppercase mb-1">Toplam Eserler</p>
               <p class="text-3xl font-bold text-blue-600">{{ artistInfo.artworksCount }}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+            <div class="bg-blue-50 rounded-2xl p-4">
+              <p class="text-gray-600 text-sm font-medium uppercase mb-1">Toplam Atölyeler</p>
+              <p class="text-3xl font-bold text-blue-600">{{ artistInfo.workshopsCount }}</p>
             </div>
           </div>
 
@@ -139,7 +160,8 @@ const fetchArtistInfo = async (artistName) => {
     artistInfo.value = {
       name: artistName,
       biography: '',
-      artworksCount: 0
+      artworksCount: 0,
+      workshopsCount: 0
     };
   }
 };
@@ -156,8 +178,6 @@ watch(showArtistModal, (newVal) => {
 
 onMounted(async () => {
   try {
-    // Backend'den tüm eserleri getirip içinden ID'si eşleşeni buluyoruz
-    // Not: İleride sadece tek bir eseri çeken /artworks/:id endpoint'i de yazılabilir
     const response = await axios.get('http://localhost:8080/artworks');
     const allArtworks = response.data;
     artwork.value = allArtworks.find(a => a.id === parseInt(route.params.id));

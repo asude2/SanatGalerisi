@@ -10,6 +10,7 @@ import ArtistDetail from './views/ArtistDetail.vue';
 import WorkshopDetail from './views/WorkshopDetail.vue';
 import AddArtwork from './views/AddArtwork.vue'
 import AddWorkshop from './views/AddWorkshop.vue'
+import Artists from './views/ArtistsView.vue'
 
 
 
@@ -68,6 +69,11 @@ const routes = [
     name: 'AddWorkshop', 
     component: AddWorkshop 
   },
+  {
+  path: '/artists',
+  name: 'Artists',
+  component: Artists
+  }
 ]
 
 const router = createRouter({

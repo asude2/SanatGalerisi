@@ -228,7 +228,7 @@
             </div>
           </div>
 
-          <div class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
+          <div v-if="userRole === 'Instructor'"  class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
             <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-green-600" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
@@ -541,7 +541,13 @@ const fetchMyWorkshops = async () => {
 const deleteMyWorkshop = async (id) => {
   if (confirm("Bu atölyeyi silmek istediğinize emin misiniz?")) {
     try {
-      await axios.delete(`http://localhost:8080/delete-workshop?id=${id}`);
+      const userEmail = localStorage.getItem('userEmail');
+      await axios.delete(`http://localhost:8080/delete-workshop?id=${id}`, {
+        data: {
+          workshopId: id,
+          email: userEmail
+        }
+      });
       
       alert("Atölye başarıyla silindi.");
       
