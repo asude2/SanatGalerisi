@@ -69,6 +69,17 @@
           <span class="absolute left-4 top-4 text-xl opacity-50">🔒</span>
         </div>
 
+        <div class="mb-4">
+          <label class="block text-gray-700 text-sm font-bold mb-2">Hesap Türü</label>
+          <select 
+            v-model="user.role" 
+            class="w-full p-4 border border-gray-200 rounded-2xl focus:outline-none focus:border-galeri-yesil focus:ring-4 focus:ring-green-50 transition-all appearance-none bg-white"
+          >
+            <option value="User">Sanatsever (Kullanıcı)</option>
+            <option value="Instructor">Eğitmen / Sanatçı</option>
+          </select>
+        </div>
+
         <button 
           @click="handleRegister" 
           class="w-full bg-galeri-yesil text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-green-600 transform hover:-translate-y-1 transition-all text-lg mt-4"
@@ -98,7 +109,8 @@ const user = ref({
   lastName: '',
   email: '',
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
+  role: 'User'
 })
 
 const handleRegister = async () => {
@@ -118,7 +130,8 @@ const handleRegister = async () => {
       firstName: user.value.firstName,
       lastName: user.value.lastName,
       email: user.value.email,
-      password: user.value.password
+      password: user.value.password,
+      role: user.value.role 
     })
 
     if (response.status === 201) {

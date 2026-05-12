@@ -61,6 +61,17 @@
             </div>
           </div>
 
+          <div v-if="userRole === 'Instructor'" class="md:col-span-2 space-y-2">
+            <label class="block text-sm font-semibold text-gray-600 uppercase tracking-wider ml-1">✨ Biyografi (Sanatçı Bilgisi)</label>
+            <textarea 
+              v-model="user.biography" 
+              rows="5"
+              placeholder="Kendinizi tanıtın, sanat stiliniz, ilham kaynaklarınız hakkında yazın..."
+              class="block w-full px-5 py-4 text-lg border-2 border-gray-100 rounded-xl bg-gray-50 focus:bg-white focus:border-blue-500 transition-all outline-none resize-none"
+            ></textarea>
+            <p class="text-xs text-gray-400 ml-1">Bu bilgi ziyaretçiler tarafından görülecektir.</p>
+          </div>
+
           <div class="md:col-span-2 pt-6">
             <button 
               @click="updateProfile" 
@@ -204,12 +215,51 @@
             <div v-if="favorites && favorites.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <ArtworkCard 
                 v-for="fav in favorites" 
-                :key="fav.id" 
-                v-bind="fav"
+                :key="fav.id"
+                :id="fav.id"
+                :title="fav.title"
+                :artist="fav.artist"
+                :price="fav.price"
+                :image="fav.imageUrl"
               />
             </div>
             <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
               <p class="text-gray-400 italic">Henüz bir eseri favorilere eklemediniz.</p>
+            </div>
+          </div>
+
+          <div v-if="userRole === 'Instructor'"  class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
+            <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+              </svg>
+              Eklediğim Eserler
+            </h3>
+
+            <div v-if="myArtworks && myArtworks.length > 0" class="space-y-4">
+              <div v-for="artwork in myArtworks" :key="artwork.id" 
+                  class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+                
+                <div class="flex items-center space-x-4 flex-1">
+                  <img :src="artwork.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="artwork.title">
+                  <div>
+                    <h4 class="text-lg font-bold text-gray-900">{{ artwork.title }}</h4>
+                    <p class="text-gray-600 text-sm">{{ artwork.description?.substring(0, 50) }}...</p>
+                    <p class="text-green-600 font-semibold mt-1">{{ artwork.price }} TL</p>
+                  </div>
+                </div>
+
+                <button 
+                  @click="deleteMyArtwork(artwork.id)" 
+                  class="ml-4 px-4 py-2 bg-red-100 text-red-600 font-bold rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
+                >
+                  🗑️ Sil
+                </button>
+              </div>
+            </div>
+
+            <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz eser eklemediniz.</p>
             </div>
           </div>
         </div>
@@ -218,8 +268,48 @@
           <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600"></div>
           <p class="text-xl text-gray-500 font-medium">Bilgileriniz getiriliyor...</p>
         </div>
+
+
+        <div v-if="userRole === 'Instructor'" class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
+          <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z" />
+            </svg>
+            Oluşturduğum Atölyeler
+          </h3>
+
+          <div v-if="myWorkshops && myWorkshops.length > 0" class="space-y-4">
+            <div v-for="ws in myWorkshops" :key="ws.id" 
+                class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+              
+              <div class="flex items-center space-x-4 flex-1">
+                <img :src="ws.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="ws.title">
+                <div>
+                  <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
+                  <p class="text-gray-500 text-sm">📍 {{ ws.location }} | 📅 {{ ws.availableDates }}</p>
+                  <p class="text-indigo-600 font-semibold mt-1">{{ ws.price }} TL <span class="text-gray-400 text-xs">(Kapasite: {{ ws.capacity }})</span></p>
+                </div>
+              </div>
+
+              <div class="flex gap-2">
+                <button 
+                  @click="deleteMyWorkshop(ws.id)" 
+                  class="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  🗑️ Sil
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+            <p class="text-gray-400 italic">Henüz bir atölye oluşturmadınız.</p>
+          </div>
+        </div>
       </div>
     </div>
+
+
 
     <div v-if="showEditModal && selectedEnrollment" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
@@ -271,7 +361,10 @@ const goBack = () => {
 };
 
 const user = ref(null);
+const userRole = ref('');
 const favorites = ref([]);
+const myArtworks = ref([]);
+const myWorkshops = ref([]);
 const enrollments = ref([]);
 const showEditModal = ref(false);
 const selectedEnrollment = ref(null);
@@ -284,7 +377,8 @@ const passwords = ref({
 
 // Sayfa yüklendiğinde bilgileri getir
 onMounted(async () => {
-  const userEmail = localStorage.getItem('userEmail'); 
+  const userEmail = localStorage.getItem('userEmail');
+  userRole.value = localStorage.getItem('userRole') || '';
   if (!userEmail) return;
 
   try {
@@ -294,6 +388,7 @@ onMounted(async () => {
     const favRes = await axios.get(`http://localhost:8080/favorites/list?email=${userEmail}`);
     favorites.value = favRes.data || [];
 
+    await fetchUserArtworks(userEmail);
     await fetchEnrollments();
     await fetchArtworkPurchases();
   } catch (error) {
@@ -391,7 +486,86 @@ const fetchArtworkPurchases = async () => {
   }
 };
 
+// Kullanıcının eklediği eserleri getir
+const fetchUserArtworks = async (userEmail) => {
+  try {
+    const res = await axios.get(`http://localhost:8080/artworks`);
+    const allArtworks = res.data || [];
+    
+    // Kullanıcının artist kaydını al
+    const profileRes = await axios.get(`http://localhost:8080/profile?email=${userEmail}`);
+    // Backend'den artist bilgisi döneceğini varsayarsak, şimdilik isim üzerinden filtreleyeceğiz
+    const userName = profileRes.data.firstName + ' ' + profileRes.data.lastName;
+    
+    // Sanatçı adı eşleşen eserleri filtrele
+    myArtworks.value = allArtworks.filter(art => art.artist === userName);
+  } catch (error) {
+    console.error("Kendi eserler yüklenemedi:", error);
+  }
+};
+
+// Eser sil
+const deleteMyArtwork = async (artworkId) => {
+  if (confirm("Bu eseri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.")) {
+    try {
+      const userEmail = localStorage.getItem('userEmail');
+      await axios.post(`http://localhost:8080/delete-artwork`, {
+        artworkId: artworkId,
+        email: userEmail
+      });
+      alert("Eser başarıyla silindi.");
+      
+      // Listeyi yenile
+      const userEmail2 = localStorage.getItem('userEmail');
+      await fetchUserArtworks(userEmail2);
+    } catch (error) {
+      alert(error.response?.data || "Eser silinirken bir hata oluştu.");
+    }
+  }
+};
+
+
+// Kendi atölyelerini getir
+const fetchMyWorkshops = async () => {
+  const email = localStorage.getItem('userEmail');
+  try {
+    const res = await axios.get(`http://localhost:8080/my-workshops?email=${email}`);
+    myWorkshops.value = res.data || [];
+  } catch (error) {
+    console.error("Kendi atölyeleriniz yüklenemedi:", error);
+  }
+};
+
+
+
+const deleteMyWorkshop = async (id) => {
+  if (confirm("Bu atölyeyi silmek istediğinize emin misiniz?")) {
+    try {
+      const userEmail = localStorage.getItem('userEmail');
+      await axios.delete(`http://localhost:8080/delete-workshop?id=${id}`, {
+        data: {
+          workshopId: id,
+          email: userEmail
+        }
+      });
+      
+      alert("Atölye başarıyla silindi.");
+      
+      // Listeyi anlık güncellemek için tekrar çekiyoruz
+      await fetchMyWorkshops(); 
+    } catch (error) {
+      console.error("Silme hatası:", error);
+      alert("Silme işlemi başarısız: " + (error.response?.data || "Sunucu hatası"));
+    }
+  }
+};
+
+
+
 onMounted(async () => {
   await fetchArtworkPurchases();
+  if (userRole.value === 'Instructor') {
+    await fetchMyWorkshops();
+  }
 });
 </script>
