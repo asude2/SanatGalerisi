@@ -130,24 +130,16 @@ const userName = ref('Misafir')
 const userRole = ref('')
 const artworks = ref([])
 const searchQuery = ref('')
-const categories = ref([])
 const selectedCategory = ref(null)
 const showCategories = ref(false)
 
-// API'den eserleri çek
+const categories = ref(['Manzara', 'Rönesans', 'Realizm', 'Natürmort', 'Modern Sanat'])
+
+
 const fetchArtworks = async () => {
   try {
     const response = await axios.get('http://localhost:8080/artworks')
     artworks.value = response.data || [] 
-    
-    // Debug: Backend'den ne geliyor gör
-    console.log("Backend Verisi:", artworks.value);
-
-    // Benzersiz kategorileri al ve boş olanları temizle
-    const uniqueCategories = [...new Set(artworks.value.map(a => a.category).filter(c => c && c.trim() !== ""))]
-    categories.value = uniqueCategories.sort()
-    
-    console.log("İşlenmiş Kategoriler:", categories.value);
   } catch (error) {
     console.error("Eserler yüklenirken bir hata oluştu:", error)
   }

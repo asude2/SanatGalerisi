@@ -118,3 +118,15 @@ INSERT INTO Coupons (Code, DiscountAmount, IsActive) VALUES ('SANAT100', 100.00,
 -- SELECT a.Title, r.ArtistName, a.Category, a.Price 
 -- FROM Artworks a 
 -- JOIN Artists r ON a.ArtistID = r.ArtistID;
+
+USE SanatProjesi;
+GO
+
+-- Mevcut eserleri yeni kategorilere göre güncelleyelim (Örnektir, ID'lerine göre düzenle)
+UPDATE Artworks SET Category = 'Manzara' WHERE Title = 'Yıldızlı Gece';
+UPDATE Artworks SET Category = 'Rönesans' WHERE Title = 'Mona Lisa';
+
+-- Eğer yeni bir eser eklenecekse şu formata dikkat et:
+-- INSERT INTO Artworks (Title, ArtistID, Price, ImageUrl, Category) 
+-- VALUES ('Eser Adı', 1, 5000, 'url', 'Modern Sanat');
+GO

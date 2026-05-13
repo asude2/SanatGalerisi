@@ -39,10 +39,11 @@
               v-model="artwork.category" 
               class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-green-50 transition-all text-lg appearance-none"
             >
-              <option value="Tablo">Tablo / Resim</option>
-              <option value="Heykel">Heykel</option>
-              <option value="Dijital">Dijital Sanat</option>
-              <option value="Fotograf">Fotoğraf</option>
+            <option value="Manzara">Manzara</option>
+            <option value="Rönesans">Rönesans</option>
+            <option value="Realizm">Realizm</option>
+            <option value="Natürmort">Natürmort</option>
+            <option value="Modern Sanat">Modern Sanat</option>
             </select>
           </div>
         </div>
