@@ -44,6 +44,7 @@ CREATE TABLE Artworks (
     CreatedAt DATETIME DEFAULT GETDATE(),
     CONSTRAINT FK_Artwork_Artist FOREIGN KEY (ArtistID) REFERENCES Artists(ArtistID)
 );
+ALTER TABLE Artworks ADD IsSold BIT DEFAULT 0;
 
 -- 5. ADIM: Atölyeler (Workshoplar)
 CREATE TABLE Workshops (
@@ -89,10 +90,31 @@ CREATE TABLE ArtworkPurchases (
     CONSTRAINT FK_Purchase_Artwork FOREIGN KEY (ArtworkId) REFERENCES Artworks(Id)
 );
 GO
+ALTER TABLE ArtworkPurchases ADD PaymentMethod NVARCHAR(50) DEFAULT 'Kredi Kartı';
 
 
 
+-- ! 1. Kullanıcılar tablosuna bakiye sütunu ekle (Eğer yoksa)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'Balance')
+BEGIN
+    ALTER TABLE Users ADD Balance DECIMAL(18, 2) DEFAULT 0.00;
+END
 
-SELECT a.Title, r.ArtistName, a.Category, a.Price 
-FROM Artworks a 
-JOIN Artists r ON a.ArtistID = r.ArtistID;
+-- ! 2. Kuponlar tablosunu oluştur
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID('Coupons') AND type = 'U')
+BEGIN
+    CREATE TABLE Coupons (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Code NVARCHAR(50) UNIQUE NOT NULL,
+        DiscountAmount DECIMAL(18, 2) NOT NULL,
+        IsActive BIT DEFAULT 1
+    );
+END
+-- Denemek için bir tane örnek kupon ekleyelim
+INSERT INTO Coupons (Code, DiscountAmount, IsActive) VALUES ('SANAT100', 100.00, 1);
+
+
+
+-- SELECT a.Title, r.ArtistName, a.Category, a.Price 
+-- FROM Artworks a 
+-- JOIN Artists r ON a.ArtistID = r.ArtistID;

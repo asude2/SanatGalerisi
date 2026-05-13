@@ -16,13 +16,14 @@ import (
 )
 
 type User struct {
-	ID        int    `json:"id"`
-	FirstName string `json:"firstName"`
-	LastName  string `json:"lastName"`
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-	UserRole  string `json:"role"` // 'User' veya 'Instructor'
-	Biography string `json:"biography"`
+	ID        int     `json:"id"`
+	FirstName string  `json:"firstName"`
+	LastName  string  `json:"lastName"`
+	Email     string  `json:"email"`
+	Password  string  `json:"password"`
+	UserRole  string  `json:"role"` // 'User' veya 'Instructor'
+	Biography string  `json:"biography"`
+	Balance   float64 `json:"balance"`
 }
 
 // 2. Login Yanıtı (Frontend'e rolü de söylemeliyiz)
@@ -282,15 +283,16 @@ func getUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 
 	var u User
 	var biography sql.NullString
+	var balance sql.NullFloat64
 
-	// Users ve Artists tablosundan biography'yi al
+	// Users ve Artists tablosundan biography'yi ve balance'ı al
 	query := `
-		SELECT u.FirstName, u.LastName, u.Email, ISNULL(a.Biography, '')
+		SELECT u.FirstName, u.LastName, u.Email, ISNULL(a.Biography, ''), ISNULL(u.Balance, 0)
 		FROM Users u
 		LEFT JOIN Artists a ON u.UserID = a.UserID
 		WHERE u.Email = @p1
 	`
-	err = db.QueryRow(query, email).Scan(&u.FirstName, &u.LastName, &u.Email, &biography)
+	err = db.QueryRow(query, email).Scan(&u.FirstName, &u.LastName, &u.Email, &biography, &balance)
 
 	if err != nil {
 		http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
@@ -299,6 +301,12 @@ func getUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 
 	if biography.Valid {
 		u.Biography = biography.String
+	}
+
+	if balance.Valid {
+		u.Balance = balance.Float64
+	} else {
+		u.Balance = 0
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -742,44 +750,6 @@ func deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon başarıyla iptal edildi"})
 }
 
-// ! ESER SATIN ALMA
-func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	if r.Method == "OPTIONS" {
-		return
-	}
-
-	var req BuyArtwork
-	json.NewDecoder(r.Body).Decode(&req)
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
-	defer db.Close()
-
-	// --- Eser zaten satılmış mı? ---
-	var exists int
-	checkQuery := "SELECT COUNT(*) FROM ArtworkPurchases WHERE ArtworkId = @p1"
-	db.QueryRow(checkQuery, req.ArtworkId).Scan(&exists)
-
-	if exists > 0 {
-		// 409 Conflict: "Bu eser zaten satılmış/alınmış"
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Bu eser daha önce satın alınmış! ❌"})
-		return
-	}
-
-	// satılmadıysa devam et
-	query := `INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice) VALUES (@p1, @p2, @p3)`
-	_, err := db.Exec(query, req.Email, req.ArtworkId, req.Price)
-
-	if err != nil {
-		http.Error(w, "DB Hatası: "+err.Error(), 500)
-		return
-	}
-	json.NewEncoder(w).Encode(map[string]string{"message": "Eser başarıyla satın alındı! 🎉"})
-}
-
 // ! KULLANICININ SATIN ALDIĞI ESERLERİ GETİRME
 func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -931,7 +901,7 @@ func deleteArtworkHandler(w http.ResponseWriter, r *http.Request) {
 func getArtistHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	artistName := r.URL.Query().Get("name")
 
 	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
@@ -1155,44 +1125,203 @@ func getMyWorkshopsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(workshops)
 }
 
-
 // ! SANATÇILARI GETİRME (ADMIN İÇİN)
 func getArtistsHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 
-    db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
-    defer db.Close()
+	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	defer db.Close()
 
-    // Artists ve Users tablolarını birleştirerek isim ve biyografi bilgilerini çekiyoruz
-    query := `
+	// Artists ve Users tablolarını birleştirerek isim ve biyografi bilgilerini çekiyoruz
+	query := `
         SELECT a.ArtistID, a.ArtistName, a.Biography, a.Nationality, u.Email 
         FROM Artists a
         JOIN Users u ON a.UserID = u.UserID`
-    
-    rows, err := db.Query(query)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    defer rows.Close()
 
-    var artists []map[string]interface{}
-    for rows.Next() {
-        var id int
-        var name, bio, nationality, email string
-        rows.Scan(&id, &name, &bio, &nationality, &email)
-        
-        artists = append(artists, map[string]interface{}{
-            "id":          id,
-            "name":        name,
-            "biography":   bio,
-            "nationality": nationality,
-            "email":       email,
-        })
-    }
+	rows, err := db.Query(query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
-    json.NewEncoder(w).Encode(artists)
+	var artists []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var name, bio, nationality, email string
+		rows.Scan(&id, &name, &bio, &nationality, &email)
+
+		artists = append(artists, map[string]interface{}{
+			"id":          id,
+			"name":        name,
+			"biography":   bio,
+			"nationality": nationality,
+			"email":       email,
+		})
+	}
+
+	json.NewEncoder(w).Encode(artists)
+}
+
+// ! Bakiye Yükleme Handler'ı
+func updateBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	var data struct {
+		Email  string  `json:"email"`
+		Amount float64 `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Veri formatı hatalı", http.StatusBadRequest)
+		return
+	}
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		http.Error(w, "DB Hatası", 500)
+		return
+	}
+	defer db.Close()
+
+	// Bakiyeyi güncelle (NULL ise 0 kabul et)
+	_, err = db.Exec("UPDATE Users SET Balance = ISNULL(Balance, 0) + @p1 WHERE Email = @p2", data.Amount, data.Email)
+	if err != nil {
+		http.Error(w, "SQL Hatası", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Bakiye başarıyla güncellendi!"})
+}
+
+// ! Kupon Kontrol Handler'ı
+func checkCouponHandler(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+
+	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	defer db.Close()
+
+	var discount float64
+	var isActive bool
+	err := db.QueryRow("SELECT DiscountAmount, IsActive FROM Coupons WHERE Code = @p1", code).Scan(&discount, &isActive)
+
+	if err != nil || !isActive {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Geçersiz veya pasif kupon!"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]float64{"discount": discount})
+}
+
+// ! ESER SATIN ALMA
+func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var data struct {
+		Email         string  `json:"email"`
+		ArtworkId     int     `json:"artworkId"`
+		Price         float64 `json:"price"` // Vue'dan gelen (indirimli veya indirimsiz) net fiyat
+		PaymentMethod string  `json:"paymentMethod"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Geçersiz veri", http.StatusBadRequest)
+		return
+	}
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "Veritabanı işlemi başlatılamadı", http.StatusInternalServerError)
+		return
+	}
+
+	// --- 1. ADIM: Eser Satılmış mı? ---
+	var isSold bool
+	err = tx.QueryRow("SELECT IsSold FROM Artworks WHERE Id = @p1", data.ArtworkId).Scan(&isSold)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Eser bulunamadı", http.StatusNotFound)
+		return
+	}
+	if isSold {
+		tx.Rollback()
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Bu eser zaten satılmış! ❌"})
+		return
+	}
+
+	// --- 2. ADIM: ÖDEME AYRIMI VE BAKİYE KONTROLÜ ---
+	if data.PaymentMethod == "Uygulama Bakiyesi" || data.PaymentMethod == "Cüzdan" {
+		var currentBalance float64
+		err = tx.QueryRow("SELECT ISNULL(Balance, 0) FROM Users WHERE Email = @p1", data.Email).Scan(&currentBalance)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
+			return
+		}
+
+		if currentBalance < data.Price {
+			tx.Rollback()
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": fmt.Sprintf("Yetersiz bakiye! Mevcut: %.2f TL, Gereken: %.2f TL", currentBalance, data.Price),
+			})
+			return
+		}
+
+		result, err := tx.Exec("UPDATE Users SET Balance = Balance - @p1 WHERE Email = @p2", data.Price, data.Email)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "Bakiye güncellenirken hata oluştu", http.StatusInternalServerError)
+			return
+		}
+
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			tx.Rollback()
+			http.Error(w, "Kullanıcı bakiyesi güncellenemedi", http.StatusNotFound)
+			return
+		}
+	}
+
+	_, err = tx.Exec("UPDATE Artworks SET IsSold = 1 WHERE Id = @p1", data.ArtworkId)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Eser durumu güncellenemedi", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = tx.Exec(
+		"INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice, PaymentMethod) VALUES (@p1, @p2, @p3, @p4)",
+		data.Email, data.ArtworkId, data.Price, data.PaymentMethod,
+	)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Satın alma kaydı oluşturulamadı", http.StatusInternalServerError)
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		tx.Rollback()
+		http.Error(w, "Satın alma tamamlanamadı", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Satın alma başarılı"})
 }
 
 func main() {
@@ -1220,7 +1349,9 @@ func main() {
 	mux.HandleFunc("/add-workshop", addWorkshopHandler)
 	mux.HandleFunc("/delete-workshop", deleteWorkshopHandler)
 	mux.HandleFunc("/my-workshops", getMyWorkshopsHandler)
-	mux.HandleFunc("/artists", getArtistsHandler) 
+	mux.HandleFunc("/artists", getArtistsHandler)
+	mux.HandleFunc("/profile/update-balance", updateBalanceHandler)
+	mux.HandleFunc("/check-coupon", checkCouponHandler)
 
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*") // Güvenlik için daha sonra frontend adresini yazabilirsin

@@ -106,67 +106,68 @@
                 </button>
               </div>
             </div>
+
+            <br><br><br><br><br><br>
+
+          <div class="bg-blue-50 border-2 border-blue-100 rounded-2xl p-6 mb-8 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+              <div class="p-3 bg-blue-600 rounded-xl text-white shadow-lg text-2xl">
+                💰
+              </div>
+              <div>
+                <p class="text-sm font-bold text-blue-600 uppercase tracking-wider">Hesap Bakiyeniz</p>
+                <h3 class="text-3xl font-black text-blue-900">
+                  {{ user?.balance ? user.balance.toLocaleString() : '0' }} TL
+                </h3>
+              </div>
+            </div>
+            
+            <button 
+              @click="addBalance" 
+              class="px-6 py-3 bg-white border-2 border-blue-600 text-blue-600 font-bold rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+            >
+              + Bakiye Yükle
+            </button>
           </div>
 
 
+          <div class="mt-12 border-t-2 border-gray-100 pt-8">
+            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+              🛍️ Satın Aldığım Eserler
+            </h3>
 
-
-
-
-
-
-
-
-
-
-
-              <div class="mt-12 border-t-2 border-gray-100 pt-8">
-                <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
-                  🛍️ Satın Aldığım Eserler
-                </h3>
-
-                <div v-if="boughtArtworks.length > 0" class="space-y-4">
-                  <div v-for="item in boughtArtworks" :key="item.id" 
-                      class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
-                    
-                    <div class="flex items-center space-x-4">
-                      <img :src="item.image" class="w-20 h-20 object-cover rounded-xl shadow-sm">
-                      <div>
-                        <h4 class="text-lg font-bold text-gray-900">{{ item.title }}</h4>
-                        <p class="text-blue-600 font-semibold">{{ item.price }} TL</p>
-                        <p class="text-xs text-gray-400">{{ new Date(item.date).toLocaleDateString('tr-TR') }}</p>
-                      </div>
-                    </div>
-
-                    <div class="text-right">
-                      <span 
-                        :class="{
-                          'bg-amber-100 text-amber-700': item.status === 'Hazırlanıyor',
-                          'bg-blue-100 text-blue-700': item.status === 'Kargoda',
-                          'bg-green-100 text-green-700': item.status === 'Teslim Edildi'
-                        }"
-                        class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest"
-                      >
-                        {{ item.status }}
-                      </span>
-                    </div>
+            <div v-if="boughtArtworks.length > 0" class="space-y-4">
+              <div v-for="item in boughtArtworks" :key="item.id" 
+                  class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
+                
+                <div class="flex items-center space-x-4">
+                  <img :src="item.image" class="w-20 h-20 object-cover rounded-xl shadow-sm">
+                  <div>
+                    <h4 class="text-lg font-bold text-gray-900">{{ item.title }}</h4>
+                    <p class="text-blue-600 font-semibold">{{ item.price }} TL</p>
+                    <p class="text-xs text-gray-400">{{ new Date(item.date).toLocaleDateString('tr-TR') }}</p>
                   </div>
                 </div>
 
-                <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                  <p class="text-gray-400 italic">Henüz bir eser satın almadınız.</p>
+                <div class="text-right">
+                  <span 
+                    :class="{
+                      'bg-amber-100 text-amber-700': item.status === 'Hazırlanıyor',
+                      'bg-blue-100 text-blue-700': item.status === 'Kargoda',
+                      'bg-green-100 text-green-700': item.status === 'Teslim Edildi'
+                    }"
+                    class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest"
+                  >
+                    {{ item.status }}
+                  </span>
                 </div>
               </div>
+            </div>
 
-
-
-
-
-
-
-
-
-
+            <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz bir eser satın almadınız.</p>
+            </div>
+          </div>
 
 
           <div class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
@@ -263,11 +264,8 @@
             </div>
           </div>
         </div>
+      
 
-        <div v-else class="flex flex-col items-center justify-center py-20 space-y-4">
-          <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600"></div>
-          <p class="text-xl text-gray-500 font-medium">Bilgileriniz getiriliyor...</p>
-        </div>
 
 
         <div v-if="userRole === 'Instructor'" class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
@@ -308,6 +306,8 @@
         </div>
       </div>
     </div>
+      </div>
+
 
 
 
@@ -560,6 +560,43 @@ const deleteMyWorkshop = async (id) => {
   }
 };
 
+
+
+
+// Bakiye Yükleme Fonksiyonu
+const addBalance = async () => {
+  const input = prompt("Yüklemek istediğiniz tutarı girin (TL):", "500");
+  
+  // 1. İptal kontrolü (Kullanıcı vazgeçerse)
+  if (input === null) return;
+
+  // 2. Geçerli sayı kontrolü
+  const amount = parseFloat(input);
+
+  if (isNaN(amount) || amount <= 0) {
+    alert("⚠️ Geçerli bir sayı giriniz!");
+    return; // Fonksiyonu burada durdur, backend'e gitme
+  }
+
+  try {
+    const userEmail = localStorage.getItem('userEmail');
+    
+    // Backend'e gönder
+    await axios.put('http://localhost:8080/profile/update-balance', {
+      email: userEmail,
+      amount: amount
+    });
+
+    // Bakiyeyi backend'den yeniden çek (veritabandan en son değeri al)
+    const profileRes = await axios.get(`http://localhost:8080/profile?email=${userEmail}`);
+    user.value = profileRes.data;
+
+    alert(`🎉 ${amount} TL başarıyla yüklendi!`);
+  } catch (error) {
+    console.error("Bakiye hatası:", error);
+    alert("Bakiye güncellenirken bir sorun oluştu.");
+  }
+};
 
 
 onMounted(async () => {
