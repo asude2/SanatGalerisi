@@ -228,6 +228,56 @@
               <p class="text-gray-400 italic">Henüz bir eseri favorilere eklemediniz.</p>
             </div>
           </div>
+          
+
+          <div v-if="userRole === 'Instructor'" class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
+  <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+    </svg>
+    🎨 Gelen Siparişler (Satış Onayı)
+  </h3>
+
+  <div v-if="sellerOrders && sellerOrders.length > 0" class="overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-sm">
+    <table class="min-w-full divide-y divide-gray-200 text-left">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Eser Bilgisi</th>
+          <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Alıcı</th>
+          <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Fiyat</th>
+          <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Durum</th>
+          <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">İşlem</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        <tr v-for="order in sellerOrders" :key="order.id" class="hover:bg-gray-50 transition-colors">
+          <td class="px-6 py-4 font-bold text-gray-900">{{ order.title }}</td>
+          <td class="px-6 py-4 text-sm text-gray-600">{{ order.email }}</td>
+          <td class="px-6 py-4 font-semibold text-blue-600">{{ order.price }} TL</td>
+          <td class="px-6 py-4">
+            <span :class="order.status === 'Onaylandı' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                  class="px-3 py-1 rounded-full text-xs font-bold">
+              {{ order.status }}
+            </span>
+          </td>
+          <td class="px-6 py-4 text-right">
+            <button 
+              v-if="order.status === 'Hazırlanıyor'"
+              @click="confirmSale(order.id)" 
+              class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
+            >
+              Onayla
+            </button>
+            <span v-else class="text-gray-400 text-sm italic">Tamamlandı</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+    <p class="text-gray-400 italic">Henüz bir satış talebi almadınız.</p>
+  </div>
+</div>
 
           <div v-if="userRole === 'Instructor'"  class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
             <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
@@ -374,6 +424,33 @@ const passwords = ref({
   oldPassword: '',
   newPassword: ''
 });
+const sellerOrders = ref([])
+
+// Asude'nin (Satıcı) siparişlerini getirir
+const fetchSellerOrders = async () => {
+  try {
+    // NOT: Gerçek projede '2' yerine login olan kullanıcının ID'si gelmeli
+    // LocalStorage'da userID tutuyorsan onu kullanabilirsin kanka
+    const sellerId = 2 
+    const response = await axios.get(`http://localhost:8080/seller-orders?sellerId=${sellerId}`)
+    sellerOrders.value = response.data || []
+  } catch (error) {
+    console.error("Siparişler çekilemedi:", error)
+  }
+}
+
+// Satış Onaylama Fonksiyonu
+const confirmSale = async (purchaseId) => {
+  if (!confirm('Bu satışı onaylamak istediğinize emin misiniz?')) return
+  
+  try {
+    await axios.post('http://localhost:8080/confirm-sale', { purchaseId })
+    alert('Satış başarıyla onaylandı! ✅')
+    await fetchSellerOrders() // Tabloyu tazele
+  } catch (error) {
+    alert('Onay işlemi sırasında bir hata oluştu.')
+  }
+}
 
 // Sayfa yüklendiğinde bilgileri getir
 onMounted(async () => {
@@ -395,6 +472,9 @@ onMounted(async () => {
     console.error("Veriler yüklenemedi:", error);
   }
 
+  if (userRole.value === 'Instructor') {
+    fetchSellerOrders()
+  }
 });
 
 // Profil Güncelleme

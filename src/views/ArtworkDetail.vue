@@ -146,7 +146,6 @@ const applyCoupon = async () => {
   }
 };
 
-// --- Güncellenmiş Satın Alma Fonksiyonu ---
 const buyArtwork = async () => {
   const userEmail = localStorage.getItem('userEmail');
   if (!userEmail) {
@@ -154,29 +153,36 @@ const buyArtwork = async () => {
     return;
   }
 
-  const finalPrice = artwork.value.price - appliedDiscount.value;
+  // Eserin ID'sini ve fiyatını alıyoruz
+  const artworkId = artwork.value.id; 
+  const finalPrice = artwork.value.price - (appliedDiscount.value || 0);
 
-  if (!confirm(`${artwork.value.title} eserini ${finalPrice.toLocaleString()} TL karşılığında satın almak istiyor musunuz?`)) return;
+  if (!confirm(`${artwork.value.title} eserini satın almak istiyor musunuz?`)) return;
 
   try {
-    await axios.post('http://localhost:8080/artworks/buy', {
-      email: localStorage.getItem('userEmail'),
-      artworkId: artwork.value.id,
-      price: finalPrice, 
-      paymentMethod: selectedPaymentMethod.value
+    // KRİTİK DÜZELTME: URL artık backend ile tam uyumlu
+    // Terminaldeki 404 hatasını bu satır çözecek.
+    const response = await axios.post(`http://localhost:8080/buy-artwork/${artworkId}`, {
+      email: userEmail,
+      artworkId: artworkId,
+      price: finalPrice,
+      paymentMethod: selectedPaymentMethod.value || "Cüzdan"
     });
 
-    alert("Satın alma başarılı! Sanat koleksiyonuna eklendi. 🎨");
+    alert("Satın alma başarılı! 🎨");
     router.push('/profile');
   } catch (error) {
-    if (error.response && error.response.status === 400) {
+    console.error("Hata detayı:", error.response);
+    const status = error.response?.status;
+    
+    if (status === 400) {
       if (confirm("Bakiyeniz yetersiz! 💸 Bakiye yüklemek için profile gitmek ister misiniz?")) {
         router.push('/profile');
       }
-    } else if (error.response && error.response.status === 409) {
-      alert("Maalesef bu eser çoktan satılmış! 😔");
+    } else if (status === 404) {
+      alert("Hata: Backend rotası (URL) bulunamadı! Lütfen backend'i ve URL'yi kontrol et.");
     } else {
-      alert("Satın alma başarısız: " + (error.response?.data?.message || "Bir hata oluştu."));
+      alert("İşlem başarısız: " + (error.response?.data?.message || "Bir hata oluştu."));
     }
   }
 };

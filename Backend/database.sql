@@ -119,14 +119,52 @@ INSERT INTO Coupons (Code, DiscountAmount, IsActive) VALUES ('SANAT100', 100.00,
 -- FROM Artworks a 
 -- JOIN Artists r ON a.ArtistID = r.ArtistID;
 
+
+-- 1. Eserin kime ait olduğunu bilmemiz lazım (Satıcı)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Artworks]') AND name = 'OwnerID')
+BEGIN
+    ALTER TABLE Artworks ADD OwnerID INT FOREIGN KEY REFERENCES Users(Id);
+END
+GO
+
+-- 2. Mevcut eserleri test için Asude'ye (diyelim ki ID'si 2) atayalım
+UPDATE Artworks SET OwnerID = 2; 
+GO
+
+
+
+-- Hata veren kısmı düzeltiyoruz: Referans sütun adı 'UserID' olmalı
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Artworks]') AND name = 'OwnerID')
+BEGIN
+    ALTER TABLE Artworks ADD OwnerID INT;
+    -- Foreign Key'i UserID üzerinden bağlıyoruz
+    ALTER TABLE Artworks ADD CONSTRAINT FK_Artworks_Owner FOREIGN KEY (OwnerID) REFERENCES Users(UserID);
+END
+GO
+
+
+-- Test verisi (Asude'ye atama)
+UPDATE Artworks SET OwnerID = 2; 
+GO
+
+-- ArtworkPurchases Tablosuna SellerID: Bir satış gerçekleştiğinde, o satışın hangi satıcıya ait olduğunu doğrudan bu tabloda tutmak sorguları çok hızlandırır.
+ALTER TABLE ArtworkPurchases ADD SellerID INT;
+ALTER TABLE ArtworkPurchases 
+ADD CONSTRAINT FK_Purchase_Seller FOREIGN KEY (SellerID) REFERENCES Users(UserID);
+GO
+
+
+
 USE SanatProjesi;
 GO
 
--- Mevcut eserleri yeni kategorilere göre güncelleyelim (Örnektir, ID'lerine göre düzenle)
-UPDATE Artworks SET Category = 'Manzara' WHERE Title = 'Yıldızlı Gece';
-UPDATE Artworks SET Category = 'Rönesans' WHERE Title = 'Mona Lisa';
-
--- Eğer yeni bir eser eklenecekse şu formata dikkat et:
--- INSERT INTO Artworks (Title, ArtistID, Price, ImageUrl, Category) 
--- VALUES ('Eser Adı', 1, 5000, 'url', 'Modern Sanat');
+-- 1. Eserlerin bir sahibi olduğundan emin olalım (Test için hepsini Asude'ye -ID:2- atıyoruz)
+-- Eğer senin Users tablanda Asude'nin ID'si farklıysa 2 yerine onu yaz kanka
+UPDATE Artworks SET OwnerID = 2 WHERE OwnerID IS NULL OR OwnerID NOT IN (SELECT UserID FROM Users);
 GO
+
+-- 2. Eğer tabloda eski, hatalı kayıtlar kaldıysa onları temizleyelim ki çakışma yapmasın
+DELETE FROM ArtworkPurchases WHERE SellerID NOT IN (SELECT UserID FROM Users);
+GO
+
+UPDATE Artworks SET OwnerID = 2 WHERE OwnerID IS NULL;
