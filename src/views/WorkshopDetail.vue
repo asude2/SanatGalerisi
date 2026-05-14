@@ -84,6 +84,12 @@
         </button>
       </div>
     </div>
+
+    <!-- Yorumlar Bölümü -->
+    <div v-if="workshop" class="max-w-4xl mx-auto mt-8 px-6">
+      <CommentSection targetType="Workshop" :targetId="workshop.id" />
+    </div>
+
   </div>
 </template>
 
@@ -91,7 +97,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import { jwtDecode } from 'jwt-decode' // Token'dan email almak için gerekli
+import { jwtDecode } from 'jwt-decode'
+import CommentSection from '../components/CommentSection.vue'
 
 const route = useRoute()
 const router = useRouter()

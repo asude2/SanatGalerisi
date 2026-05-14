@@ -104,6 +104,12 @@
         </div>
       </div>
     </div>
+
+    <!-- Yorumlar Bölümü -->
+    <div v-if="artwork" class="max-w-6xl mx-auto mt-8 px-4">
+      <CommentSection targetType="Artwork" :targetId="artwork.id" />
+    </div>
+
   </div>
 </template>
 
@@ -112,6 +118,7 @@ import { ref, onMounted, watch } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
+import CommentSection from '../components/CommentSection.vue';
 
 const route = useRoute();
 const router = useRouter();

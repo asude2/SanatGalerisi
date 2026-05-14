@@ -11,6 +11,7 @@ import WorkshopDetail from './views/WorkshopDetail.vue';
 import AddArtwork from './views/AddArtwork.vue'
 import AddWorkshop from './views/AddWorkshop.vue'
 import Artists from './views/ArtistsView.vue'
+import SupportView from './views/SupportView.vue'
 
 
 
@@ -73,6 +74,11 @@ const routes = [
   path: '/artists',
   name: 'Artists',
   component: Artists
+  },
+  {
+  path: '/support',
+  name: 'Support',
+  component: SupportView
   }
 ]
 
