@@ -9,9 +9,20 @@
     </header>
 
     <main class="container mx-auto px-6">
-      <div v-if="workshops.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div class="mb-8">
+        <label class="block text-gray-700 font-semibold mb-2" for="workshopSearch">Atölye ara</label>
+        <input
+          id="workshopSearch"
+          v-model="searchTerm"
+          type="text"
+          placeholder="Başlık ya da eğitmen adı girin"
+          class="w-full rounded-xl border border-gray-300 px-4 py-3 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+        />
+      </div>
+
+      <div v-if="filteredWorkshops.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <WorkshopCard 
-          v-for="ws in workshops" 
+          v-for="ws in filteredWorkshops" 
           :key="ws.id" 
           :id="ws.id"
           :title="ws.title"
@@ -24,20 +35,32 @@
         />
       </div>
       <div v-else class="text-center py-20 text-gray-400">
-        Şu an aktif bir atölye bulunmamaktadır...
+        {{ workshops.length > 0 ? 'Aramanıza uygun atölye bulunamadı.' : 'Şu an aktif bir atölye bulunmamaktadır...' }}
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import WorkshopCard from '../components/WorkshopCard.vue'
 
 const router = useRouter()
 const workshops = ref([])
+const searchTerm = ref('')
+
+const filteredWorkshops = computed(() => {
+  const search = searchTerm.value.trim().toLowerCase()
+  if (!search) return workshops.value
+
+  return workshops.value.filter(ws => {
+    const title = String(ws.title || '').toLowerCase()
+    const instructor = String(ws.instructorName || '').toLowerCase()
+    return title.includes(search) || instructor.includes(search)
+  })
+})
 
 onMounted(async () => {
   try {

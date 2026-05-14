@@ -1,3 +1,6 @@
+//go:build ignore
+// Bu dosya sadece veritabanı güncellemesi için kullanılır: go run update_db.go
+
 package main
 import (
     "database/sql"

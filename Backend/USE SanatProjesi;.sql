@@ -1,7 +1,6 @@
 USE SanatProjesi;
 GO
 
--- 1. ADIM: Eski tabloları bağımlılık sırasına göre sil (Varsa)
 IF OBJECT_ID('WorkshopEnrollments', 'U') IS NOT NULL DROP TABLE WorkshopEnrollments;
 IF OBJECT_ID('ArtworkPurchases', 'U') IS NOT NULL DROP TABLE ArtworkPurchases;
 IF OBJECT_ID('Favorites', 'U') IS NOT NULL DROP TABLE Favorites;
@@ -11,28 +10,30 @@ IF OBJECT_ID('Artists', 'U') IS NOT NULL DROP TABLE Artists;
 IF OBJECT_ID('Users', 'U') IS NOT NULL DROP TABLE Users;
 GO
 
--- 2. ADIM: Kullanıcılar Tablosu (Rol desteğiyle)
+
+GO
+
+-- 1. ADIM: Gelişmiş Kullanıcı Tablosu
 CREATE TABLE Users (
     UserID INT PRIMARY KEY IDENTITY(1,1),
     FirstName NVARCHAR(100) NOT NULL,
     LastName NVARCHAR(100) NOT NULL,
     Email NVARCHAR(100) UNIQUE NOT NULL,
     Password NVARCHAR(255) NOT NULL,
-    UserRole NVARCHAR(20) DEFAULT 'User', -- 'User' veya 'Instructor'
+    UserRole NVARCHAR(20) DEFAULT 'User',  -- 'User' (Öğrenci) veya 'Instructor' (Eğitmen/Sanatçı) rollerini tutar
     CreatedAt DATETIME DEFAULT GETDATE()
 );
 
--- 3. ADIM: Sanatçılar Tablosu (Kullanıcılara bağlı)
+-- 2. ADIM: Sanatçı Detayları (Kullanıcıya bağlı)
 CREATE TABLE Artists (
     ArtistID INT PRIMARY KEY IDENTITY(1,1),
-    UserID INT NOT NULL,
+    UserID INT NOT NULL, -- Her sanatçı aslında bir User'dır
     Biography NVARCHAR(MAX),
     Nationality NVARCHAR(100),
-    ArtistName NVARCHAR(200), -- Sanatçı adı (Kolaylık için)
     CONSTRAINT FK_Artist_User FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
--- 4. ADIM: Sanat Eserleri (Kategori desteği eklendi)
+-- 3. ADIM: Sanat Eserleri (Ekleyen bilgisiyle)
 CREATE TABLE Artworks (
     Id INT PRIMARY KEY IDENTITY(1,1),
     Title NVARCHAR(200) NOT NULL,
@@ -40,12 +41,11 @@ CREATE TABLE Artworks (
     Price DECIMAL(18, 2),
     ImageUrl NVARCHAR(MAX),
     Description NVARCHAR(MAX),
-    Category NVARCHAR(100), -- Frontend'den gelen kategori burada tutulacak
     CreatedAt DATETIME DEFAULT GETDATE(),
-    CONSTRAINT FK_Artwork_Artist FOREIGN KEY (ArtistID) REFERENCES Artists(ArtistID)
+    FOREIGN KEY (ArtistID) REFERENCES Artists(ArtistID)
 );
 
--- 5. ADIM: Atölyeler (Workshoplar)
+-- 4. ADIM: Workshoplar (Eğitmen bilgisiyle)
 CREATE TABLE Workshops (
     Id INT PRIMARY KEY IDENTITY(1,1),
     Title NVARCHAR(200) NOT NULL,
@@ -60,13 +60,12 @@ CREATE TABLE Workshops (
     CONSTRAINT FK_Workshop_Instructor FOREIGN KEY (InstructorID) REFERENCES Users(UserID)
 );
 
--- 6. ADIM: Favoriler ve Diğer İşlem Tabloları
 CREATE TABLE Favorites (
     Id INT PRIMARY KEY IDENTITY(1,1),
     UserEmail NVARCHAR(100) NOT NULL, 
-    ArtworkId INT NOT NULL,                
+    ArtworkId INT NOT NULL,        
     CreatedAt DATETIME DEFAULT GETDATE(),
-    CONSTRAINT UC_UserFavorite UNIQUE (UserEmail, ArtworkId)
+    CONSTRAINT UC_UserFavorite UNIQUE (UserEmail, ArtworkId) -- Bir kullanıcı aynı eseri iki kez favorileyemesin
 );
 
 CREATE TABLE WorkshopEnrollments (
@@ -88,11 +87,8 @@ CREATE TABLE ArtworkPurchases (
     CreatedAt DATETIME DEFAULT GETDATE(),
     CONSTRAINT FK_Purchase_Artwork FOREIGN KEY (ArtworkId) REFERENCES Artworks(Id)
 );
-GO
 
+SELECT * FROM Users WHERE Email = 'irem@gmail.com';
+SELECT * FROM Users;
 
-
-
-SELECT a.Title, r.ArtistName, a.Category, a.Price 
-FROM Artworks a 
-JOIN Artists r ON a.ArtistID = r.ArtistID;
+SELECT * FROM Artworks;
