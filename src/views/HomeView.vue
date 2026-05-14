@@ -58,6 +58,7 @@
           <span class="absolute left-4 top-4">🔍</span>
         </div>
         
+
         <div class="relative">
           <button 
             @click.stop="showCategories = !showCategories"
@@ -88,6 +89,34 @@
               </button>
             </div>
           </div>
+        </div>
+
+
+                <div class="flex items-center gap-4 mt-6">
+          <div class="flex items-center bg-white border-2 border-gray-100 rounded-2xl p-1 shadow-sm">
+            <button 
+              @click="sortOrder = 'asc'" 
+              :class="sortOrder === 'asc' ? 'bg-galeri-yesil text-white' : 'text-gray-500 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2"
+            >
+              <span>📈</span> Artan Sırada
+            </button>
+            <button 
+              @click="sortOrder = 'desc'" 
+              :class="sortOrder === 'desc' ? 'bg-galeri-yesil text-white' : 'text-gray-500 hover:bg-gray-50'"
+              class="px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2"
+            >
+              <span>📉</span> Azalan Sırada
+            </button>
+          </div>
+
+          <button 
+            v-if="sortOrder" 
+            @click="sortOrder = null" 
+            class="text-sm text-red-500 font-bold hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
+          >
+            Seçimi Temizle
+          </button>
         </div>
       </div>
 
@@ -160,21 +189,35 @@ const closeMenu = () => { showCategories.value = false }
 onMounted(() => { window.addEventListener('click', closeMenu) })
 onUnmounted(() => { window.removeEventListener('click', closeMenu) })
 
+const sortOrder = ref(null) // 'asc', 'desc' veya null olabilir
+
 const filteredArtworks = computed(() => {
   if (!artworks.value) return [] 
-  let result = artworks.value
+  let result = [...artworks.value] // Orijinal veriyi bozmamak için kopyasını alıyoruz
 
+  // 1. ARAMA FİLTRESİ
+  const search = searchQuery.value.toLowerCase().trim()
+  if (search) {
+    result = result.filter(artwork => 
+      artwork.title?.toLowerCase().includes(search) || 
+      artwork.artist?.toLowerCase().includes(search)
+    )
+  }
+
+  // 2. KATEGORİ FİLTRESİ
   if (selectedCategory.value) {
     result = result.filter(artwork => artwork.category === selectedCategory.value)
   }
 
-  const search = searchQuery.value.toLowerCase().trim()
-  if (search) {
-    result = result.filter(artwork => {
-      return artwork.title?.toLowerCase().includes(search) || 
-             artwork.artist?.toLowerCase().includes(search)
-    })
+  // 3. SIRALAMA ŞOVU (Artan veya Azalan)
+  if (sortOrder.value === 'asc') {
+    // Küçükten büyüğe (Ucuzdan Pahalıya)
+    result.sort((a, b) => a.price - b.price)
+  } else if (sortOrder.value === 'desc') {
+    // Büyükten küçüğe (Pahalıdan Ucuza)
+    result.sort((a, b) => b.price - a.price)
   }
+
   return result
 })
 
