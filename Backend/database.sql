@@ -2,6 +2,11 @@ USE SanatProjesi;
 GO
 
 -- 1. ADIM: Eski tabloları bağımlılık sırasına göre sil (Varsa)
+IF OBJECT_ID('CommentHelpfulVotes', 'U') IS NOT NULL DROP TABLE CommentHelpfulVotes;
+IF OBJECT_ID('CommentReplies', 'U') IS NOT NULL DROP TABLE CommentReplies;
+IF OBJECT_ID('Comments', 'U') IS NOT NULL DROP TABLE Comments;
+IF OBJECT_ID('SupportMessages', 'U') IS NOT NULL DROP TABLE SupportMessages;
+IF OBJECT_ID('SupportTickets', 'U') IS NOT NULL DROP TABLE SupportTickets;
 IF OBJECT_ID('WorkshopEnrollments', 'U') IS NOT NULL DROP TABLE WorkshopEnrollments;
 IF OBJECT_ID('ArtworkPurchases', 'U') IS NOT NULL DROP TABLE ArtworkPurchases;
 IF OBJECT_ID('Favorites', 'U') IS NOT NULL DROP TABLE Favorites;
@@ -87,6 +92,56 @@ CREATE TABLE ArtworkPurchases (
     Status NVARCHAR(50) DEFAULT 'Hazırlanıyor', 
     CreatedAt DATETIME DEFAULT GETDATE(),
     CONSTRAINT FK_Purchase_Artwork FOREIGN KEY (ArtworkId) REFERENCES Artworks(Id)
+);
+
+-- 7. ADIM: Yorumlar ve Etkileşimler
+CREATE TABLE Comments (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    TargetType NVARCHAR(50) NOT NULL, -- 'Artwork' veya 'Workshop'
+    TargetId INT NOT NULL,
+    UserEmail NVARCHAR(100) NOT NULL,
+    UserName NVARCHAR(200),
+    Content NVARCHAR(MAX) NOT NULL,
+    Rating INT DEFAULT 0,
+    HelpfulCount INT DEFAULT 0,
+    CreatedAt DATETIME DEFAULT GETDATE()
+);
+
+CREATE TABLE CommentReplies (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    CommentId INT NOT NULL,
+    UserEmail NVARCHAR(100) NOT NULL,
+    UserName NVARCHAR(200),
+    Content NVARCHAR(MAX) NOT NULL,
+    CreatedAt DATETIME DEFAULT GETDATE(),
+    CONSTRAINT FK_Reply_Comment FOREIGN KEY (CommentId) REFERENCES Comments(Id)
+);
+
+CREATE TABLE CommentHelpfulVotes (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    CommentId INT NOT NULL,
+    UserEmail NVARCHAR(100) NOT NULL,
+    CreatedAt DATETIME DEFAULT GETDATE(),
+    CONSTRAINT FK_Vote_Comment FOREIGN KEY (CommentId) REFERENCES Comments(Id),
+    CONSTRAINT UC_UserVote UNIQUE (CommentId, UserEmail)
+);
+
+-- Destek Talepleri
+CREATE TABLE SupportTickets (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    UserEmail NVARCHAR(100) NOT NULL,
+    Subject NVARCHAR(200) NOT NULL,
+    Status NVARCHAR(50) DEFAULT 'Açık',
+    CreatedAt DATETIME DEFAULT GETDATE()
+);
+
+CREATE TABLE SupportMessages (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    TicketId INT NOT NULL,
+    SenderEmail NVARCHAR(100) NOT NULL,
+    Message NVARCHAR(MAX) NOT NULL,
+    CreatedAt DATETIME DEFAULT GETDATE(),
+    CONSTRAINT FK_Message_Ticket FOREIGN KEY (TicketId) REFERENCES SupportTickets(Id)
 );
 GO
 

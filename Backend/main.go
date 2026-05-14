@@ -734,6 +734,18 @@ func deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
+	// Önce bu kayıtla ilgili yorumları temizle (Kullanıcının bu workshop için yaptığı yorumlar)
+	// Enrollment'tan workshopId ve kullanıcı email'ini almamız lazım.
+	var workshopId int
+	var userEmail string
+	err = db.QueryRow("SELECT WorkshopId, UserEmail FROM WorkshopEnrollments WHERE Id = @p1", id).Scan(&workshopId, &userEmail)
+	if err == nil {
+		// Puanları/Yorumları temizle (Cascade manuel)
+		db.Exec(`DELETE FROM CommentHelpfulVotes WHERE CommentId IN (SELECT Id FROM Comments WHERE TargetType = 'Workshop' AND TargetId = @p1 AND UserEmail = @p2)`, workshopId, userEmail)
+		db.Exec(`DELETE FROM CommentReplies WHERE CommentId IN (SELECT Id FROM Comments WHERE TargetType = 'Workshop' AND TargetId = @p1 AND UserEmail = @p2)`, workshopId, userEmail)
+		db.Exec("DELETE FROM Comments WHERE TargetType = 'Workshop' AND TargetId = @p1 AND UserEmail = @p2", workshopId, userEmail)
+	}
+
 	query := "DELETE FROM WorkshopEnrollments WHERE Id = @p1"
 	_, err = db.Exec(query, id)
 
@@ -920,6 +932,11 @@ func deleteArtworkHandler(w http.ResponseWriter, r *http.Request) {
 	// 5. ADIM: Sonra ArtworkPurchases tablosundan sil
 	db.Exec("DELETE FROM ArtworkPurchases WHERE ArtworkId = @p1", req.ArtworkID)
 
+	// 5.5 ADIM: Yorumları temizle (Artwork'e ait tüm yorumlar silinir)
+	db.Exec(`DELETE FROM CommentHelpfulVotes WHERE CommentId IN (SELECT Id FROM Comments WHERE TargetType = 'Artwork' AND TargetId = @p1)`, req.ArtworkID)
+	db.Exec(`DELETE FROM CommentReplies WHERE CommentId IN (SELECT Id FROM Comments WHERE TargetType = 'Artwork' AND TargetId = @p1)`, req.ArtworkID)
+	db.Exec("DELETE FROM Comments WHERE TargetType = 'Artwork' AND TargetId = @p1", req.ArtworkID)
+
 	// 6. ADIM: Son olarak Artworks tablosundan sil
 	_, err = db.Exec("DELETE FROM Artworks WHERE Id = @p1", req.ArtworkID)
 	if err != nil {
@@ -1093,6 +1110,11 @@ func deleteWorkshopHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Enrollment silme hatası: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// 3.5 ADIM: Yorumları temizle (Atölyeye ait tüm yorumlar silinir)
+	db.Exec(`DELETE FROM CommentHelpfulVotes WHERE CommentId IN (SELECT Id FROM Comments WHERE TargetType = 'Workshop' AND TargetId = @p1)`, req.WorkshopID)
+	db.Exec(`DELETE FROM CommentReplies WHERE CommentId IN (SELECT Id FROM Comments WHERE TargetType = 'Workshop' AND TargetId = @p1)`, req.WorkshopID)
+	db.Exec("DELETE FROM Comments WHERE TargetType = 'Workshop' AND TargetId = @p1", req.WorkshopID)
 
 	// 4. ADIM: Sonra Workshops tablosundan sil
 	_, err = db.Exec("DELETE FROM Workshops WHERE Id = @p1", req.WorkshopID)
@@ -1364,17 +1386,17 @@ func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Daha önce bu yorumu faydalı işaretlemiş mi?
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM CommentHelpful WHERE CommentId = @p1 AND UserEmail = @p2",
+	db.QueryRow("SELECT COUNT(*) FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2",
 		req.CommentId, req.UserEmail).Scan(&count)
 
 	if count > 0 {
 		// Zaten işaretlemiş → geri al (toggle)
-		db.Exec("DELETE FROM CommentHelpful WHERE CommentId = @p1 AND UserEmail = @p2", req.CommentId, req.UserEmail)
+		db.Exec("DELETE FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2", req.CommentId, req.UserEmail)
 		db.Exec("UPDATE Comments SET HelpfulCount = HelpfulCount - 1 WHERE Id = @p1", req.CommentId)
 		json.NewEncoder(w).Encode(map[string]string{"message": "faydalı işareti kaldırıldı"})
 	} else {
 		// Henüz işaretlememiş → ekle
-		db.Exec("INSERT INTO CommentHelpful (CommentId, UserEmail) VALUES (@p1, @p2)", req.CommentId, req.UserEmail)
+		db.Exec("INSERT INTO CommentHelpfulVotes (CommentId, UserEmail) VALUES (@p1, @p2)", req.CommentId, req.UserEmail)
 		db.Exec("UPDATE Comments SET HelpfulCount = HelpfulCount + 1 WHERE Id = @p1", req.CommentId)
 		json.NewEncoder(w).Encode(map[string]string{"message": "faydalı işaretlendi"})
 	}
