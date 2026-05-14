@@ -96,13 +96,13 @@
           </p>
 
           <div class="mt-5 flex items-center justify-end border-t border-gray-50 pt-4">
-            <button 
+          <button 
               @click="markHelpful(comment.id)" 
-              class="flex items-center gap-2 text-sm font-semibold transition-colors"
-              :class="helpfulVotes[comment.id] ? 'text-galeri-yesil' : 'text-gray-400 hover:text-gray-600'"
+              class="flex items-center gap-2 text-sm font-semibold transition-all px-3 py-1.5 rounded-lg"
+              :class="helpfulVotes[comment.id] ? 'text-green-600 bg-green-50 hover:bg-green-100' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'"
             >
               <span class="text-lg transition-transform" :class="helpfulVotes[comment.id] ? 'scale-125' : 'group-hover:scale-110'">👍</span>
-              <span>Faydalı ({{ comment.helpfulCount }})</span>
+              <span>{{ helpfulVotes[comment.id] ? 'Faydalı Buldum ✓' : 'Faydalı' }} ({{ comment.helpfulCount }})</span>
             </button>
           </div>
         </div>
@@ -209,40 +209,34 @@ const submitComment = async () => {
   }
 };
 
-// Faydalı bul
+// Faydalı bul / geri al (toggle)
 const markHelpful = async (commentId) => {
   const token = localStorage.getItem('userToken');
   if (!token) {
-    alert("Değerlendirme yapmak için giriş yapmalısınız!");
+    alert("Değlendirme yapmak için giriş yapmalısınız!");
     return;
   }
   
-  if (helpfulVotes.value[commentId]) {
-    return; // Zaten basılmış
-  }
-
   try {
     const decoded = jwtDecode(token);
-    await axios.post('http://localhost:8080/comments/helpful', {
+    const res = await axios.post('http://localhost:8080/comments/helpful', {
       userEmail: decoded.email,
       commentId: commentId
     });
 
-    helpfulVotes.value[commentId] = true;
-    
-    // UI'da optimistic update yapalım (anında artsın)
     const comment = comments.value.find(c => c.id === commentId);
-    if (comment) {
-      comment.helpfulCount++;
+    if (res.data.message === 'removed') {
+      // Toggle: oyu kaldır
+      helpfulVotes.value[commentId] = false;
+      if (comment) comment.helpfulCount = Math.max(0, comment.helpfulCount - 1);
+    } else {
+      // Yeni oy ver
+      helpfulVotes.value[commentId] = true;
+      if (comment) comment.helpfulCount++;
     }
 
   } catch (error) {
-    if (error.response && error.response.status === 409) {
-      alert("Bu yorumu zaten faydalı buldunuz!");
-      helpfulVotes.value[commentId] = true; // Lokal durumu güncelle
-    } else {
-      console.error("Faydalı oyu verilemedi:", error);
-    }
+    console.error("Faydalı oyu verilemedi:", error);
   }
 };
 

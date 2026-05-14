@@ -285,7 +285,10 @@ const passwords = ref({
 // Sayfa yüklendiğinde bilgileri getir
 onMounted(async () => {
   const userEmail = localStorage.getItem('userEmail'); 
-  if (!userEmail) return;
+  if (!userEmail) {
+    // email yoksa user null kalır, loading spinner yerine hata mesajı göster
+    return;
+  }
 
   try {
     const profileRes = await axios.get(`http://localhost:8080/profile?email=${userEmail}`);
@@ -298,6 +301,8 @@ onMounted(async () => {
     await fetchArtworkPurchases();
   } catch (error) {
     console.error("Veriler yüklenemedi:", error);
+    // Hata olsa bile user'ı boş obje yap ki spinner durson
+    if (!user.value) user.value = { firstName: '', lastName: '', email: userEmail };
   }
 
 });
@@ -391,7 +396,5 @@ const fetchArtworkPurchases = async () => {
   }
 };
 
-onMounted(async () => {
-  await fetchArtworkPurchases();
-});
+
 </script>

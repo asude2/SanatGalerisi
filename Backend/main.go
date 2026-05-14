@@ -831,7 +831,7 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 
 func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
     var req struct {
-        CommentId int `json:"commentId"`
+        CommentId int    `json:"commentId"`
         UserEmail string `json:"userEmail"`
     }
     json.NewDecoder(r.Body).Decode(&req)
@@ -842,13 +842,27 @@ func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
     }
     defer db.Close()
 
-    query := "INSERT INTO CommentHelpfulVotes (CommentId, UserEmail) VALUES (@p1, @p2)"
-    _, err = db.Exec(query, req.CommentId, req.UserEmail)
-    if err != nil {
-        http.Error(w, "Zaten oy verdiniz", 409)
-        return
+    // Daha önce oy vermiş mi kontrol et
+    var existing int
+    db.QueryRow("SELECT COUNT(*) FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2", req.CommentId, req.UserEmail).Scan(&existing)
+
+    if existing > 0 {
+        // Oyu geri al (toggle)
+        _, err = db.Exec("DELETE FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2", req.CommentId, req.UserEmail)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+        json.NewEncoder(w).Encode(map[string]string{"message": "removed"})
+    } else {
+        // Yeni oy ekle
+        _, err = db.Exec("INSERT INTO CommentHelpfulVotes (CommentId, UserEmail) VALUES (@p1, @p2)", req.CommentId, req.UserEmail)
+        if err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
+        json.NewEncoder(w).Encode(map[string]string{"message": "added"})
     }
-    json.NewEncoder(w).Encode(map[string]string{"message": "Faydalı olarak işaretlendi."})
 }
 
 func main() {
@@ -877,6 +891,7 @@ func main() {
     mux.HandleFunc("/comments/add", addCommentHandler)
     mux.HandleFunc("/comments/list", getCommentsHandler)
     mux.HandleFunc("/comments/helpful", rateCommentHandler)
+    mux.HandleFunc("/comments/helpful/toggle", rateCommentHandler)
 
     finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Access-Control-Allow-Origin", "*") // Güvenlik için daha sonra frontend adresini yazabilirsin
