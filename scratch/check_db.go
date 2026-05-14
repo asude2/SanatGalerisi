@@ -9,23 +9,30 @@ import (
 )
 
 func main() {
-	connString := "server=localhost\\SQLEXPRESS;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
+	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, err := sql.Open("sqlserver", connString)
 	if err != nil {
 		log.Fatal("Open failed: ", err)
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES")
-	if err != nil {
-		log.Fatal("Query failed: ", err)
-	}
-	defer rows.Close()
-
-	fmt.Println("Tables found:")
+	fmt.Println("\nUsers Sample:")
+	rows, _ := db.Query("SELECT TOP 3 UserID, FirstName, LastName, Email FROM Users")
 	for rows.Next() {
-		var name string
-		rows.Scan(&name)
-		fmt.Println("- ", name)
+		var id int
+		var f, l, e string
+		rows.Scan(&id, &f, &l, &e)
+		fmt.Printf("ID: %d, Name: %s %s, Email: %s\n", id, f, l, e)
 	}
+	rows.Close()
+
+	fmt.Println("\nArtists Sample:")
+	rows, _ = db.Query("SELECT TOP 3 ArtistID, FullName FROM Artists")
+	for rows.Next() {
+		var id int
+		var name string
+		rows.Scan(&id, &name)
+		fmt.Printf("ID: %d, Name: %s\n", id, name)
+	}
+	rows.Close()
 }

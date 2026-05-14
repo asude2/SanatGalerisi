@@ -39,6 +39,8 @@
             :artist="artwork.artist" 
             :price="artwork.price" 
             :image="artwork.imageUrl"
+            :rating="artwork.averageRating"
+            :commentCount="artwork.commentCount"
           />
         </div>
 

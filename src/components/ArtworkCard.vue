@@ -20,8 +20,15 @@
           <h3 class="text-xl font-bold text-gray-800">{{ title }}</h3>
           <p class="text-gray-500 text-sm italic">{{ artist }}</p>
         </div>
-        <div class="bg-green-50 text-galeri-yesil px-3 py-1 rounded-lg text-sm font-bold">
-          4.8 ⭐
+        <div v-if="rating > 0" class="bg-amber-50 text-amber-600 px-3 py-1 rounded-lg text-sm font-bold flex items-center gap-1">
+          <span>{{ rating.toFixed(1) }}</span>
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+          </svg>
+          <span class="text-[10px] opacity-70">({{ commentCount }})</span>
+        </div>
+        <div v-else class="bg-gray-50 text-gray-400 px-3 py-1 rounded-lg text-sm font-bold">
+          Yeni ✨
         </div>
       </div>
 
@@ -41,7 +48,7 @@ import { useRouter } from 'vue-router';
 import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
 
-const props = defineProps(['id', 'title', 'artist', 'price', 'image']);
+const props = defineProps(['id', 'title', 'artist', 'price', 'image', 'rating', 'commentCount']);
 const router = useRouter();
 const isFavorite = ref(false);
 

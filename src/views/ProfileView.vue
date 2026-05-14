@@ -24,7 +24,21 @@
       </div>
 
       <div class="p-10">
-        <div v-if="user" class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- Yükleniyor Durumu -->
+        <div v-if="loading" class="flex flex-col items-center justify-center py-20 space-y-4">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600"></div>
+          <p class="text-xl text-gray-500 font-medium">Bilgileriniz getiriliyor...</p>
+        </div>
+
+        <!-- Hata Durumu -->
+        <div v-else-if="error" class="flex flex-col items-center justify-center py-20 space-y-4 text-center">
+          <span class="text-5xl">⚠️</span>
+          <p class="text-xl text-red-500 font-medium">{{ error }}</p>
+          <button @click="fetchProfileData" class="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold">Tekrar Dene</button>
+        </div>
+
+        <!-- Profil İçeriği -->
+        <div v-else-if="user" class="grid grid-cols-1 md:grid-cols-2 gap-8">
           
           <div class="space-y-2">
             <label class="block text-sm font-semibold text-gray-600 uppercase tracking-wider ml-1">Ad</label>
@@ -221,6 +235,8 @@
                 :artist="fav.artist"
                 :price="fav.price"
                 :image="fav.imageUrl"
+                :rating="fav.averageRating"
+                :commentCount="fav.commentCount"
               />
             </div>
             <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
@@ -262,48 +278,43 @@
               <p class="text-gray-400 italic">Henüz eser eklemediniz.</p>
             </div>
           </div>
-        </div>
+          
+          <!-- Eğitmen Atölyeleri (Profil İçeriği İçinde) -->
+          <div v-if="userRole === 'Instructor'" class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
+            <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z" />
+              </svg>
+              Oluşturduğum Atölyeler
+            </h3>
 
-        <div v-else class="flex flex-col items-center justify-center py-20 space-y-4">
-          <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600"></div>
-          <p class="text-xl text-gray-500 font-medium">Bilgileriniz getiriliyor...</p>
-        </div>
+            <div v-if="myWorkshops && myWorkshops.length > 0" class="space-y-4">
+              <div v-for="ws in myWorkshops" :key="ws.id" 
+                  class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+                
+                <div class="flex items-center space-x-4 flex-1">
+                  <img :src="ws.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="ws.title">
+                  <div>
+                    <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
+                    <p class="text-gray-500 text-sm">📍 {{ ws.location }} | 📅 {{ ws.availableDates }}</p>
+                    <p class="text-indigo-600 font-semibold mt-1">{{ ws.price }} TL <span class="text-gray-400 text-xs">(Kapasite: {{ ws.capacity }})</span></p>
+                  </div>
+                </div>
 
-
-        <div v-if="userRole === 'Instructor'" class="md:col-span-2 mt-12 pt-8 border-t-2 border-gray-100">
-          <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3z" />
-            </svg>
-            Oluşturduğum Atölyeler
-          </h3>
-
-          <div v-if="myWorkshops && myWorkshops.length > 0" class="space-y-4">
-            <div v-for="ws in myWorkshops" :key="ws.id" 
-                class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
-              
-              <div class="flex items-center space-x-4 flex-1">
-                <img :src="ws.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="ws.title">
-                <div>
-                  <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
-                  <p class="text-gray-500 text-sm">📍 {{ ws.location }} | 📅 {{ ws.availableDates }}</p>
-                  <p class="text-indigo-600 font-semibold mt-1">{{ ws.price }} TL <span class="text-gray-400 text-xs">(Kapasite: {{ ws.capacity }})</span></p>
+                <div class="flex gap-2">
+                  <button 
+                    @click="deleteMyWorkshop(ws.id)" 
+                    class="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    🗑️ Sil
+                  </button>
                 </div>
               </div>
-
-              <div class="flex gap-2">
-                <button 
-                  @click="deleteMyWorkshop(ws.id)" 
-                  class="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  🗑️ Sil
-                </button>
-              </div>
             </div>
-          </div>
 
-          <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-            <p class="text-gray-400 italic">Henüz bir atölye oluşturmadınız.</p>
+            <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz bir atölye oluşturmadınız.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -362,6 +373,8 @@ const goBack = () => {
 
 const user = ref(null);
 const userRole = ref('');
+const loading = ref(true);
+const error = ref(null);
 const favorites = ref([]);
 const myArtworks = ref([]);
 const myWorkshops = ref([]);
@@ -377,25 +390,40 @@ const passwords = ref({
 
 // Sayfa yüklendiğinde bilgileri getir
 onMounted(async () => {
+  await fetchProfileData();
+});
+
+const fetchProfileData = async () => {
   const userEmail = localStorage.getItem('userEmail');
   userRole.value = localStorage.getItem('userRole') || '';
-  if (!userEmail) return;
+  
+  if (!userEmail) {
+    router.push('/login');
+    return;
+  }
+
+  loading.value = true;
+  error.value = null;
 
   try {
     const profileRes = await axios.get(`http://localhost:8080/profile?email=${userEmail}`);
     user.value = profileRes.data;
 
-    const favRes = await axios.get(`http://localhost:8080/favorites/list?email=${userEmail}`);
-    favorites.value = favRes.data || [];
-
-    await fetchUserArtworks(userEmail);
-    await fetchEnrollments();
-    await fetchArtworkPurchases();
-  } catch (error) {
-    console.error("Veriler yüklenemedi:", error);
+    // Diğer verileri paralel çek (Sayfa hızı için)
+    await Promise.allSettled([
+      fetchFavorites(userEmail),
+      fetchEnrollments(),
+      fetchArtworkPurchases(),
+      (userRole.value === 'Instructor' ? fetchUserArtworks(userEmail) : Promise.resolve()),
+      (userRole.value === 'Instructor' ? fetchMyWorkshops() : Promise.resolve())
+    ]);
+  } catch (err) {
+    console.error("Veriler yüklenemedi:", err);
+    error.value = err.response?.data || "Profil bilgileri yüklenirken bir hata oluştu. Sunucu bağlantısını kontrol edin.";
+  } finally {
+    loading.value = false;
   }
-
-});
+};
 
 // Profil Güncelleme
 const updateProfile = async () => {
@@ -404,6 +432,40 @@ const updateProfile = async () => {
     alert("Profil bilgileriniz başarıyla güncellendi.");
   } catch (error) {
     alert("Güncelleme başarısız.");
+  }
+};
+
+// Rezervasyonları getir
+const fetchEnrollments = async () => {
+  const userEmail = localStorage.getItem('userEmail');
+  try {
+    const res = await axios.get(`http://localhost:8080/user-enrollments?email=${userEmail}`);
+    enrollments.value = res.data || [];
+  } catch (error) {
+    console.error("Rezervasyonlar yüklenemedi:", error);
+  }
+};
+
+// Rezervasyon İptal
+const cancelEnrollment = async (id) => {
+  if (confirm("Bu rezervasyonu iptal etmek istediğinize emin misiniz?")) {
+    try {
+      await axios.delete(`http://localhost:8080/delete-enrollment?id=${id}`);
+      alert("Rezervasyon başarıyla iptal edildi.");
+      fetchEnrollments();
+    } catch (error) {
+      alert("İptal işlemi sırasında bir hata oluştu.");
+    }
+  }
+};
+
+// Favorileri getir
+const fetchFavorites = async (email) => {
+  try {
+    const res = await axios.get(`http://localhost:8080/favorites/list?email=${email}`);
+    favorites.value = res.data || [];
+  } catch (error) {
+    console.error("Favoriler yüklenemedi:", error);
   }
 };
 
@@ -426,30 +488,6 @@ const changePassword = async () => {
     passwords.value.newPassword = '';
   } catch (error) {
     alert(error.response?.data || "Şifre değiştirilemedi.");
-  }
-};
-
-// Rezervasyonları getir
-const fetchEnrollments = async () => {
-  const userEmail = localStorage.getItem('userEmail');
-  try {
-    const res = await axios.get(`http://localhost:8080/user-enrollments?email=${userEmail}`);
-    enrollments.value = res.data || [];
-  } catch (error) {
-    console.error("Rezervasyonlar yüklenemedi:", error);
-  }
-};
-
-// İptal Etme
-const cancelEnrollment = async (id) => {
-  if (confirm("Bu rezervasyonu iptal etmek istediğinize emin misiniz?")) {
-    try {
-      await axios.delete(`http://localhost:8080/delete-enrollment?id=${id}`);
-      alert("Rezervasyon başarıyla iptal edildi.");
-      fetchEnrollments();
-    } catch (error) {
-      alert("İptal işlemi sırasında bir hata oluştu.");
-    }
   }
 };
 
@@ -559,13 +597,4 @@ const deleteMyWorkshop = async (id) => {
     }
   }
 };
-
-
-
-onMounted(async () => {
-  await fetchArtworkPurchases();
-  if (userRole.value === 'Instructor') {
-    await fetchMyWorkshops();
-  }
-});
 </script>
