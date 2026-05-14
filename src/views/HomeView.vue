@@ -49,7 +49,7 @@
     <main class="container mx-auto -mt-4 px-4 pb-20">
       <div class="bg-white p-6 rounded-2xl shadow-sm mb-12 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-100 mt-6">
         
-        <div class="relative w-full md:w-96">
+        <div class="relative w-full">
           <input 
             v-model="searchQuery" 
             type="text" 
@@ -57,38 +57,6 @@
             class="w-full p-4 pl-12 bg-gray-50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-galeri-yesil/20 border border-transparent focus:border-galeri-yesil/30 transition-all" 
           />
           <span class="absolute left-4 top-4">🔍</span>
-        </div>
-        
-        <div class="relative">
-          <button 
-            @click.stop="showCategories = !showCategories"
-            class="px-6 py-4 bg-gray-50 text-gray-700 rounded-2xl font-bold hover:bg-gray-100 border border-gray-100 transition-all cursor-pointer flex items-center gap-2 min-w-[160px] justify-between"
-            :class="{ 'ring-2 ring-galeri-yesil ring-offset-1': selectedCategory }"
-          >
-            {{ selectedCategory || 'Kategoriler' }}
-            <span class="text-xs transition-transform" :class="{ 'rotate-180': showCategories }">▼</span>
-          </button>
-
-          <div v-if="showCategories" class="absolute top-full right-0 mt-3 bg-white rounded-2xl shadow-2xl border border-gray-50 z-[100] w-64 overflow-hidden">
-            <div class="p-2">
-              <button 
-                @click="selectCategory(null)"
-                class="w-full text-left px-4 py-3 rounded-xl transition-all mb-1 font-medium"
-                :class="!selectedCategory ? 'bg-galeri-yesil text-white' : 'hover:bg-gray-50 text-gray-600'"
-              >
-                Tüm Eserler
-              </button>
-              <button 
-                v-for="category in categories"
-                :key="category"
-                @click="selectCategory(category)"
-                class="w-full text-left px-4 py-3 rounded-xl transition-all mb-1 font-medium capitalize"
-                :class="selectedCategory === category ? 'bg-galeri-yesil text-white' : 'hover:bg-gray-50 text-gray-600'"
-              >
-                {{ category }}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -101,7 +69,7 @@
           :artist="artwork.artist" 
           :price="artwork.price" 
           :image="artwork.imageUrl"
-          :rating="artwork.averageRating"
+          :rating="artwork.rating"
           :commentCount="artwork.commentCount"
         />
       </div>
@@ -110,8 +78,7 @@
         <span class="text-7xl block mb-6">🏝️</span>
         <h3 class="text-2xl font-bold text-gray-800 mb-2">Sonuç Bulunamadı</h3>
         <p class="text-gray-400 text-lg max-w-md mx-auto">
-          {{ selectedCategory ? `"${selectedCategory}" kategorisinde` : 'Aradığınız kriterlerde' }} 
-          eşleşen bir eser bulamadık. Lütfen aramayı değiştirmeyi deneyin.
+          Aradığınız kriterlerde eşleşen bir eser bulamadık. Lütfen aramayı değiştirmeyi deneyin.
         </p>
         <button @click="resetFilters" class="mt-6 text-galeri-yesil font-bold hover:underline">
           Filtreleri Temizle
@@ -145,12 +112,6 @@ const fetchArtworks = async () => {
     
     // Debug: Backend'den ne geliyor gör
     console.log("Backend Verisi:", artworks.value);
-
-    // Benzersiz kategorileri al ve boş olanları temizle
-    const uniqueCategories = [...new Set(artworks.value.map(a => a.category).filter(c => c && c.trim() !== ""))]
-    categories.value = uniqueCategories.sort()
-    
-    console.log("İşlenmiş Kategoriler:", categories.value);
   } catch (error) {
     console.error("Eserler yüklenirken bir hata oluştu:", error)
   }
@@ -174,10 +135,6 @@ onUnmounted(() => { window.removeEventListener('click', closeMenu) })
 const filteredArtworks = computed(() => {
   if (!artworks.value) return [] 
   let result = artworks.value
-
-  if (selectedCategory.value) {
-    result = result.filter(artwork => artwork.category === selectedCategory.value)
-  }
 
   const search = searchQuery.value.toLowerCase().trim()
   if (search) {

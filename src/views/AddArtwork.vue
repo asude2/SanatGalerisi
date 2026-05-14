@@ -21,7 +21,7 @@
           />
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 gap-6">
           <div>
             <label class="block text-gray-700 font-bold mb-2 ml-1">Fiyat (₺)</label>
             <input 
@@ -31,19 +31,6 @@
               class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-green-50 transition-all text-lg"
               required
             />
-          </div>
-
-          <div>
-            <label class="block text-gray-700 font-bold mb-2 ml-1">Kategori</label>
-            <select 
-              v-model="artwork.category" 
-              class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-green-50 transition-all text-lg appearance-none"
-            >
-              <option value="Tablo">Tablo / Resim</option>
-              <option value="Heykel">Heykel</option>
-              <option value="Dijital">Dijital Sanat</option>
-              <option value="Fotograf">Fotoğraf</option>
-            </select>
           </div>
         </div>
 
@@ -89,7 +76,6 @@ const router = useRouter()
 const artwork = ref({
   title: '',
   price: 0,
-  category: 'Tablo',
   imageUrl: '',
   description: ''
 })
@@ -100,7 +86,6 @@ const handleSubmit = async () => {
     const response = await axios.post('http://localhost:8080/add-artwork', {
       title: artwork.value.title,
       price: parseFloat(artwork.value.price), 
-      category: artwork.value.category,
       imageUrl: artwork.value.imageUrl,
       description: artwork.value.description,
       email: userEmail

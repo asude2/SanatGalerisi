@@ -31,20 +31,7 @@
               </p>
             </div>
 
-            <div class="space-y-4">
-              <div>
-                <p class="text-gray-400 text-sm uppercase font-bold tracking-tighter mb-2">Kategoriler</p>
-                <div class="flex flex-wrap gap-2">
-                  <span 
-                    v-if="artwork.category" 
-                    class="inline-block bg-blue-100 text-blue-700 px-4 py-2 rounded-full font-semibold text-sm hover:bg-blue-200 transition-all"
-                  >
-                    {{ artwork.category }}
-                  </span>
-                  <span v-else class="text-gray-400 text-sm italic">Kategori belirtilmemiş</span>
-                </div>
-              </div>
-            </div>
+            <!-- Kategori bölümü kaldırıldı -->
 
             <div class="flex items-center justify-between pt-4">
               <div>

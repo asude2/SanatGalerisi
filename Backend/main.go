@@ -43,16 +43,15 @@ type CreateArtworkRequest struct {
 	ArtistID    int     `json:"artistId"`
 }
 type Artwork struct {
-	ID          int     `json:"id"`
-	Title       string  `json:"title"`
-	ArtistID    int     `json:"artistId"`
-	Artist      string  `json:"artist"`
-	Price       float64 `json:"price"`
-	ImageUrl    string  `json:"imageUrl"`
-	Description   string  `json:"description"`
-	Category      string  `json:"category"`
-	AverageRating float64 `json:"averageRating"`
-	CommentCount  int     `json:"commentCount"`
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	ArtistID     int     `json:"artistId"`
+	Artist       string  `json:"artist"`
+	Price        float64 `json:"price"`
+	ImageUrl     string  `json:"imageUrl"`
+	Description  string  `json:"description"`
+	Rating       float64 `json:"rating"`
+	CommentCount int     `json:"commentCount"`
 }
 type Workshop struct {
 	Id             int     `json:"id"`
@@ -91,7 +90,6 @@ type BuyArtwork struct {
 type ArtworkRequest struct {
 	Title       string  `json:"title"`
 	Price       float64 `json:"price"`
-	Category    string  `json:"category"`
 	ImageUrl    string  `json:"imageUrl"`
 	Description string  `json:"description"`
 	Email       string  `json:"email"`
@@ -188,11 +186,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var dbPassword string
 	var firstName string
 	var userRole string
-	var userID int
 
-	// Sorgu Güncellendi: UserID ve UserRole bilgisini de çekiyoruz
-	query := "SELECT UserID, Password, FirstName, UserRole FROM Users WHERE Email = @p1"
-	err = db.QueryRow(query, creds.Email).Scan(&userID, &dbPassword, &firstName, &userRole)
+	// Sorgu Güncellendi: UserRole bilgisini de çekiyoruz
+	query := "SELECT Password, FirstName, UserRole FROM Users WHERE Email = @p1"
+	err = db.QueryRow(query, creds.Email).Scan(&dbPassword, &firstName, &userRole)
 	if err != nil {
 		http.Error(w, "Kullanıcı bulunamadı", http.StatusUnauthorized)
 		return
@@ -205,14 +202,13 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Token Oluşturma (Rol ve ID bilgisini içine ekledik)
+	// 3. Token Oluşturma (Rol bilgisini içine ekledik)
 	var jwtKey = []byte("cok_gizli_anahtar_123")
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"email":     creds.Email,
 		"firstName": firstName,
-		"role":      userRole,
-		"userId":    userID,
+		"role":      userRole, // Vue tarafı için token içinde rolü saklıyoruz
 		"exp":       time.Now().Add(time.Hour * 24).Unix(),
 	})
 
@@ -228,9 +224,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   "Giriş başarılı!",
 		"token":     tokenString,
-		"role":      userRole,
+		"role":      userRole, // 'User' veya 'Instructor' döner
 		"firstName": firstName,
-		"userId":    userID,
 	})
 }
 
@@ -244,14 +239,16 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	    rows, err := db.Query(`
+	// Hem eser bilgilerini hem de dinamik puan/yorum sayılarını getiriyoruz
+	rows, err := db.Query(`
         SELECT 
-            aw.Id, LTRIM(RTRIM(aw.Title)), aw.ArtistID, aw.Price, LTRIM(RTRIM(aw.ImageUrl)),
-            LTRIM(RTRIM(ISNULL(aw.Description, ''))),
-            LTRIM(RTRIM(ISNULL(aw.Artist, 'Bilinmeyen Sanatçı'))),
-            ISNULL((SELECT AVG(CAST(Rating AS FLOAT)) FROM Comments WHERE TargetType = 'Artwork' AND TargetId = aw.Id), 0) as AvgRating,
-            ISNULL((SELECT COUNT(*) FROM Comments WHERE TargetType = 'Artwork' AND TargetId = aw.Id), 0) as CommentCount
+            aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl,
+            ISNULL(aw.Description, ''),
+            ISNULL(ar.FullName, 'Bilinmeyen Sanatçı'),
+            ISNULL((SELECT AVG(CAST(Rating AS FLOAT)) FROM Comments WHERE TargetType = 'Artwork' AND TargetId = aw.Id), 0),
+            ISNULL((SELECT COUNT(*) FROM Comments WHERE TargetType = 'Artwork' AND TargetId = aw.Id), 0)
         FROM Artworks aw
+        LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
     `)
 	if err != nil {
 		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
@@ -262,12 +259,11 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	artworks := []Artwork{}
 	for rows.Next() {
 		var a Artwork
-		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Description, &a.Artist, &a.AverageRating, &a.CommentCount)
+		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Description, &a.Artist, &a.Rating, &a.CommentCount)
 		if err != nil {
 			fmt.Println("Scan hatası:", err)
 			continue
 		}
-		a.Category = "" // DB'de kolon yok
 		artworks = append(artworks, a)
 	}
 
@@ -289,26 +285,19 @@ func getUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 	var u User
 	var biography sql.NullString
 
-	// Users tablosundan profil bilgilerini al (Artists tablosuyla birleştirerek biyografiyi alıyoruz)
+	// Users tablosundan profil bilgilerini al
 	query := `
-		SELECT LTRIM(RTRIM(u.FirstName)), LTRIM(RTRIM(u.LastName)), LTRIM(RTRIM(u.Email)), ISNULL(u.UserRole, 'User'),
-			   LTRIM(RTRIM(ISNULL(a.Biography, '')))
+		SELECT u.FirstName, u.LastName, u.Email, ISNULL(u.UserRole, 'User'),
+			   ISNULL((SELECT TOP 1 a.Biography FROM Artists a WHERE LTRIM(RTRIM(a.FullName)) = LTRIM(RTRIM(u.FirstName + ' ' + u.LastName))), '')
 		FROM Users u
-		LEFT JOIN Artists a ON (LTRIM(RTRIM(u.FirstName)) + ' ' + LTRIM(RTRIM(u.LastName))) = LTRIM(RTRIM(a.FullName))
-		WHERE LTRIM(RTRIM(u.Email)) = LTRIM(RTRIM(@p1))
+		WHERE u.Email = @p1
 	`
 	var role string
 	err = db.QueryRow(query, email).Scan(&u.FirstName, &u.LastName, &u.Email, &role, &biography)
 	u.UserRole = role
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			fmt.Println("Profil hatası: Kullanıcı bulunamadı ->", email)
-			http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
-		} else {
-			fmt.Println("Profil hatası: Sorgu başarısız ->", err)
-			http.Error(w, "Veritabanı sorgu hatası: "+err.Error(), http.StatusInternalServerError)
-		}
+		http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
 		return
 	}
 
@@ -586,12 +575,10 @@ func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := `
         SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl, 
-               ISNULL(aw.Artist, 'Bilinmeyen Sanatçı'),
-               ISNULL(aw.Description, ''),
-               ISNULL((SELECT AVG(CAST(Rating AS FLOAT)) FROM Comments WHERE TargetType = 'Artwork' AND TargetId = aw.Id), 0) as AvgRating,
-               ISNULL((SELECT COUNT(*) FROM Comments WHERE TargetType = 'Artwork' AND TargetId = aw.Id), 0) as CommentCount
+               ISNULL(ar.FullName, 'Bilinmeyen Sanatçı')
         FROM Favorites f
         JOIN Artworks aw ON f.ArtworkId = aw.Id
+        LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
         WHERE f.UserEmail = @p1
     `
 	rows, err := db.Query(query, email)
@@ -603,13 +590,12 @@ func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 
 	var favs []Artwork
 	for rows.Next() {
-		var aw Artwork
-		err := rows.Scan(&aw.ID, &aw.Title, &aw.ArtistID, &aw.Price, &aw.ImageUrl, &aw.Artist, &aw.Description, &aw.AverageRating, &aw.CommentCount)
+		var a Artwork
+		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Artist)
 		if err != nil {
 			continue
 		}
-		aw.Category = ""
-		favs = append(favs, aw)
+		favs = append(favs, a)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -663,7 +649,7 @@ func getUserEnrollmentsHandler(w http.ResponseWriter, r *http.Request) {
 	defer db.Close()
 
 	query := `
-        SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, e.CreatedAt, w.Location, w.AvailableDates, w.Id as WorkshopId
+        SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, e.CreatedAt, w.Location, w.AvailableDates
         FROM WorkshopEnrollments e
         JOIN Workshops w ON e.WorkshopId = w.Id
         WHERE e.UserEmail = @p1
@@ -678,13 +664,12 @@ func getUserEnrollmentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var enrollments []map[string]interface{}
 	for rows.Next() {
-		var id, pCount, wId int
+		var id, pCount int
 		var title, rDate, cAt, location, aDates string
-		rows.Scan(&id, &title, &pCount, &rDate, &cAt, &location, &aDates, &wId)
+		rows.Scan(&id, &title, &pCount, &rDate, &cAt, &location, &aDates)
 
 		enrollments = append(enrollments, map[string]interface{}{
 			"id":               id,
-			"workshopId":       wId, // Original Workshop ID
 			"workshopTitle":    title,
 			"participantCount": pCount,
 			"reservedDate":     rDate,
@@ -809,7 +794,7 @@ func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Artworks tablosuyla birleştirip başlığı ve resmi de alıyoruz
 	query := `
-        SELECT p.Id, a.Title, p.PurchasePrice, p.Status, p.CreatedAt, a.ImageUrl, a.Id as ArtworkId
+        SELECT p.Id, a.Title, p.PurchasePrice, p.Status, p.CreatedAt, a.ImageUrl 
         FROM ArtworkPurchases p
         JOIN Artworks a ON p.ArtworkId = a.Id
         WHERE p.UserEmail = @p1`
@@ -819,12 +804,12 @@ func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
 
 	var results []map[string]interface{}
 	for rows.Next() {
-		var id, aId int
+		var id int
 		var title, status, cAt, img string
 		var price float64
-		rows.Scan(&id, &title, &price, &status, &cAt, &img, &aId)
+		rows.Scan(&id, &title, &price, &status, &cAt, &img)
 		results = append(results, map[string]interface{}{
-			"id": id, "artworkId": aId, "title": title, "price": price, "status": status, "date": cAt, "image": img,
+			"id": id, "title": title, "price": price, "status": status, "date": cAt, "image": img,
 		})
 	}
 	json.NewEncoder(w).Encode(results)
@@ -861,15 +846,15 @@ func addArtworkHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2. ADIM: Bu kullanıcı Artists tablosunda var mı? Yoksa ekle.
 	var artistID int
-	FullName := firstName + " " + lastName
+	artistName := firstName + " " + lastName
 
 	err = db.QueryRow("SELECT ArtistID FROM Artists WHERE UserID = @p1", userID).Scan(&artistID)
 
 	if err != nil { // Kayıtlı değilse sanatçı olarak ekle
-		err = db.QueryRow("INSERT INTO Artists (UserID, FullName) OUTPUT INSERTED.ArtistID VALUES (@p1, @p2)",
-			userID, FullName).Scan(&artistID)
+		err = db.QueryRow("INSERT INTO Artists (UserID, ArtistName) OUTPUT INSERTED.ArtistID VALUES (@p1, @p2)",
+			userID, artistName).Scan(&artistID)
 	} else { // Kayıtlı ise ismi güncelleyelim
-		_, err = db.Exec("UPDATE Artists SET FullName = @p1 WHERE ArtistID = @p2", FullName, artistID)
+		_, err = db.Exec("UPDATE Artists SET ArtistName = @p1 WHERE ArtistID = @p2", artistName, artistID)
 	}
 
 	// 3. ADIM: Eseri artık gerçek ArtistID ile ekle
@@ -951,7 +936,7 @@ func getArtistHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	
-	FullName := r.URL.Query().Get("name")
+	artistName := r.URL.Query().Get("name")
 
 	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, err := sql.Open("sqlserver", connString)
@@ -971,18 +956,18 @@ func getArtistHandler(w http.ResponseWriter, r *http.Request) {
 	// Sanatçı bilgisini ve eserlerin sayısını ve atölyelerin sayısını getir
 	query := `
 		SELECT 
-			LTRIM(RTRIM(ISNULL(a.FullName, ''))), 
-			LTRIM(RTRIM(ISNULL(a.Biography, ''))), 
+			ISNULL(a.ArtistName, ''), 
+			ISNULL(a.Biography, ''), 
 			COUNT(DISTINCT aw.Id) as ArtworkCount,
 			COUNT(DISTINCT w.Id) as WorkshopCount
 		FROM Artists a
 		LEFT JOIN Artworks aw ON a.ArtistID = aw.ArtistID
-		LEFT JOIN Users u ON (LTRIM(RTRIM(u.FirstName)) + ' ' + LTRIM(RTRIM(u.LastName))) = LTRIM(RTRIM(a.FullName))
+		LEFT JOIN Users u ON a.UserID = u.UserID
 		LEFT JOIN Workshops w ON u.UserID = w.InstructorID
-		WHERE LTRIM(RTRIM(a.FullName)) = LTRIM(RTRIM(@p1))
-		GROUP BY a.ArtistID, a.FullName, a.Biography
+		WHERE a.ArtistName = @p1
+		GROUP BY a.ArtistID, a.ArtistName, a.Biography
 	`
-	err = db.QueryRow(query, FullName).Scan(&artistInfo.Name, &artistInfo.Biography, &artistInfo.ArtworksCount, &artistInfo.WorkshopsCount)
+	err = db.QueryRow(query, artistName).Scan(&artistInfo.Name, &artistInfo.Biography, &artistInfo.ArtworksCount, &artistInfo.WorkshopsCount)
 
 	if err != nil {
 		http.Error(w, "Sanatçı bulunamadı", http.StatusNotFound)
@@ -1185,7 +1170,7 @@ func getArtistsHandler(w http.ResponseWriter, r *http.Request) {
 
     // Artists ve Users tablolarını birleştirerek isim ve biyografi bilgilerini çekiyoruz
     query := `
-        SELECT a.ArtistID, a.FullName, a.Biography, a.Nationality, u.Email 
+        SELECT a.ArtistID, a.ArtistName, a.Biography, a.Nationality, u.Email 
         FROM Artists a
         JOIN Users u ON a.UserID = u.UserID`
     
@@ -1235,7 +1220,8 @@ func createSupportTicketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer db.Close()
-	_, err = db.Exec("INSERT INTO SupportTickets (UserEmail, Subject, Message) VALUES (@p1, @p2, @p3)", req.UserEmail, req.Subject, req.Message)
+	query := "INSERT INTO SupportTickets (UserEmail, Subject, Message) VALUES (@p1, @p2, @p3)"
+	_, err = db.Exec(query, req.UserEmail, req.Subject, req.Message)
 	if err != nil {
 		http.Error(w, "Kayıt başarısız: "+err.Error(), 500)
 		return
@@ -1275,75 +1261,27 @@ func getSupportTicketsHandler(w http.ResponseWriter, r *http.Request) {
 // ! YORUMLAR (COMMENTS) MODÜLÜ
 // ==========================================
 type Comment struct {
-	Id           int     `json:"id"`
-	TargetType   string  `json:"targetType"`
-	TargetId     int     `json:"targetId"`
-	UserEmail    string  `json:"userEmail"`
-	UserName     string  `json:"userName"`
-	UserRole     string  `json:"userRole"`
-	Content      string  `json:"content"`
-	Rating       int     `json:"rating"`
-	HelpfulCount int     `json:"helpfulCount"`
-	UserVoted    bool    `json:"userVoted"`
-	IsVerified   bool    `json:"isVerified"`
-	CreatedAt    string  `json:"createdAt"`
+	Id           int    `json:"id"`
+	TargetType   string `json:"targetType"`
+	TargetId     int    `json:"targetId"`
+	UserEmail    string `json:"userEmail"`
+	UserName     string `json:"userName"`
+	Content      string `json:"content"`
+	HelpfulCount int    `json:"helpfulCount"`
+	CreatedAt    string `json:"createdAt"`
 }
 
 func addCommentHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. JWT kontrolü — giriş yapılmış mı?
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "Yorum yapabilmek için giriş yapmalısınız", 401)
-		return
-	}
-
 	var req Comment
 	json.NewDecoder(r.Body).Decode(&req)
-
 	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
 	if err != nil {
 		http.Error(w, "Veritabanı hatası", 500)
 		return
 	}
 	defer db.Close()
-
-	// 2. Atölye yorumu → katılım kontrolü
-	if req.TargetType == "Workshop" {
-		var count int
-		db.QueryRow(
-			"SELECT COUNT(*) FROM WorkshopEnrollments WHERE WorkshopId = @p1 AND UserEmail = @p2",
-			req.TargetId, req.UserEmail,
-		).Scan(&count)
-		if count == 0 {
-			http.Error(w, "Bu atölyeye katılmadan yorum yapamazsınız", 403)
-			return
-		}
-	}
-
-	// 3. Eser yorumu → satın alma kontrolü
-	if req.TargetType == "Artwork" {
-		var count int
-		db.QueryRow(
-			"SELECT COUNT(*) FROM ArtworkPurchases WHERE ArtworkId = @p1 AND UserEmail = @p2",
-			req.TargetId, req.UserEmail,
-		).Scan(&count)
-		if count == 0 {
-			http.Error(w, "Bu eseri satın almadan yorum yapamazsınız", 403)
-			return
-		}
-	}
-
-	var ratingVal interface{}
-	if req.Rating >= 1 && req.Rating <= 5 {
-		ratingVal = req.Rating
-	} else {
-		ratingVal = nil
-	}
-
-	_, err = db.Exec(`
-		INSERT INTO Comments (TargetType, TargetId, UserEmail, UserName, Content, Rating)
-		VALUES (@p1, @p2, @p3, @p4, @p5, @p6)`,
-		req.TargetType, req.TargetId, req.UserEmail, req.UserName, req.Content, ratingVal)
+	query := "INSERT INTO Comments (TargetType, TargetId, UserEmail, UserName, Content) VALUES (@p1, @p2, @p3, @p4, @p5)"
+	_, err = db.Exec(query, req.TargetType, req.TargetId, req.UserEmail, req.UserName, req.Content)
 	if err != nil {
 		http.Error(w, "Yorum eklenemedi: "+err.Error(), 500)
 		return
@@ -1354,59 +1292,28 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 	targetType := r.URL.Query().Get("targetType")
-	targetId   := r.URL.Query().Get("targetId")
-	sortBy     := r.URL.Query().Get("sortBy") // newest | helpful | rating
-	currentUser := r.URL.Query().Get("userEmail")
-
+	targetId := r.URL.Query().Get("targetId")
 	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
 	if err != nil {
 		http.Error(w, "Veritabanı hatası", 500)
 		return
 	}
 	defer db.Close()
-
-	orderClause := "ORDER BY c.CreatedAt DESC"
-	switch sortBy {
-	case "helpful":
-		orderClause = "ORDER BY c.HelpfulCount DESC, c.CreatedAt DESC"
-	case "rating":
-		orderClause = "ORDER BY c.Rating DESC, c.CreatedAt DESC"
-	}
-
-	query := `
-		SELECT c.Id, c.TargetType, c.TargetId, c.UserEmail, ISNULL(c.UserName,''),
-		       c.Content, ISNULL(c.Rating,0), ISNULL(c.HelpfulCount,0),
-		       CONVERT(VARCHAR, c.CreatedAt, 120),
-			   CASE 
-			     WHEN c.TargetType = 'Artwork' AND EXISTS (SELECT 1 FROM ArtworkPurchases p WHERE p.ArtworkId = c.TargetId AND p.UserEmail = c.UserEmail) THEN 1
-				 WHEN c.TargetType = 'Workshop' AND EXISTS (SELECT 1 FROM WorkshopEnrollments e WHERE e.WorkshopId = c.TargetId AND e.UserEmail = c.UserEmail) THEN 1
-				 ELSE 0
-			   END as IsVerified,
-			   ISNULL(u.UserRole, 'User') as UserRole
-		FROM Comments c
-		LEFT JOIN Users u ON LTRIM(RTRIM(u.Email)) = LTRIM(RTRIM(c.UserEmail))
-		WHERE c.TargetType = @p1 AND c.TargetId = @p2
-		` + orderClause
-
-	rows, err := db.Query(query, targetType, targetId)
+	rows, err := db.Query(`
+		SELECT Id, TargetType, TargetId, UserEmail, UserName, Content, 
+		       ISNULL(HelpfulCount, 0), CONVERT(VARCHAR, CreatedAt, 120)
+		FROM Comments WHERE TargetType = @p1 AND TargetId = @p2
+		ORDER BY CreatedAt DESC
+	`, targetType, targetId)
 	if err != nil {
-		http.Error(w, "Sorgu hatası: "+err.Error(), 500)
+		http.Error(w, "Sorgu hatası", 500)
 		return
 	}
 	defer rows.Close()
-
 	var comments []Comment
 	for rows.Next() {
 		var c Comment
-		rows.Scan(&c.Id, &c.TargetType, &c.TargetId, &c.UserEmail, &c.UserName,
-			&c.Content, &c.Rating, &c.HelpfulCount, &c.CreatedAt, &c.IsVerified, &c.UserRole)
-		// Bu kullanıcının faydalı oy verip vermediğini kontrol et
-		if currentUser != "" {
-			var voteCount int
-			db.QueryRow("SELECT COUNT(*) FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2",
-				c.Id, currentUser).Scan(&voteCount)
-			c.UserVoted = voteCount > 0
-		}
+		rows.Scan(&c.Id, &c.TargetType, &c.TargetId, &c.UserEmail, &c.UserName, &c.Content, &c.HelpfulCount, &c.CreatedAt)
 		comments = append(comments, c)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1415,7 +1322,8 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 
 func getAverageRatingHandler(w http.ResponseWriter, r *http.Request) {
 	targetType := r.URL.Query().Get("targetType")
-	targetId   := r.URL.Query().Get("targetId")
+	targetId := r.URL.Query().Get("targetId")
+
 	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
 	if err != nil {
 		http.Error(w, "Veritabanı hatası", 500)
@@ -1423,23 +1331,22 @@ func getAverageRatingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	var avg sql.NullFloat64
+	var average float64
 	var count int
-	db.QueryRow(`
-		SELECT AVG(CAST(Rating AS FLOAT)), COUNT(*)
-		FROM Comments
-		WHERE TargetType = @p1 AND TargetId = @p2 AND Rating IS NOT NULL
-	`, targetType, targetId).Scan(&avg, &count)
+
+	query := `SELECT ISNULL(AVG(CAST(Rating AS FLOAT)), 0), COUNT(*) 
+              FROM Comments WHERE TargetType = @p1 AND TargetId = @p2`
+	err = db.QueryRow(query, targetType, targetId).Scan(&average, &count)
+	if err != nil {
+		average = 0
+		count = 0
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if avg.Valid {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"average": avg.Float64,
-			"count":   count,
-		})
-	} else {
-		json.NewEncoder(w).Encode(map[string]interface{}{"average": 0, "count": 0})
-	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"average": average,
+		"count":   count,
+	})
 }
 
 func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
@@ -1454,19 +1361,22 @@ func rateCommentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer db.Close()
+
+	// Daha önce bu yorumu faydalı işaretlemiş mi?
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2",
+	db.QueryRow("SELECT COUNT(*) FROM CommentHelpful WHERE CommentId = @p1 AND UserEmail = @p2",
 		req.CommentId, req.UserEmail).Scan(&count)
+
 	if count > 0 {
-		db.Exec("DELETE FROM CommentHelpfulVotes WHERE CommentId = @p1 AND UserEmail = @p2", req.CommentId, req.UserEmail)
+		// Zaten işaretlemiş → geri al (toggle)
+		db.Exec("DELETE FROM CommentHelpful WHERE CommentId = @p1 AND UserEmail = @p2", req.CommentId, req.UserEmail)
 		db.Exec("UPDATE Comments SET HelpfulCount = HelpfulCount - 1 WHERE Id = @p1", req.CommentId)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"voted": false, "message": "faydalı işareti kaldırıldı"})
+		json.NewEncoder(w).Encode(map[string]string{"message": "faydalı işareti kaldırıldı"})
 	} else {
-		db.Exec("INSERT INTO CommentHelpfulVotes (CommentId, UserEmail) VALUES (@p1, @p2)", req.CommentId, req.UserEmail)
+		// Henüz işaretlememiş → ekle
+		db.Exec("INSERT INTO CommentHelpful (CommentId, UserEmail) VALUES (@p1, @p2)", req.CommentId, req.UserEmail)
 		db.Exec("UPDATE Comments SET HelpfulCount = HelpfulCount + 1 WHERE Id = @p1", req.CommentId)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"voted": true, "message": "faydalı işaretlendi"})
+		json.NewEncoder(w).Encode(map[string]string{"message": "faydalı işaretlendi"})
 	}
 }
 
