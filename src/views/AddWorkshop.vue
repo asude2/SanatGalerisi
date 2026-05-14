@@ -57,11 +57,10 @@
             />
           </div>
           <div>
-            <label class="block text-gray-700 font-bold mb-2 ml-1">Tarih ve Saat</label>
+            <label class="block text-gray-700 font-bold mb-2 ml-1">Atölye Tarihi</label>
             <input 
               v-model="workshop.availableDates" 
-              type="text" 
-              placeholder="Örn: 15 Haziran 19:00" 
+              type="date" 
               class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-blue-50 transition-all text-lg"
               required
             />
@@ -115,7 +114,7 @@ const workshop = ref({
   capacity: 10,
   price: 0,
   imageUrl: '',
-  availableDates: ''
+  availableDates: '' // Template'deki type="date" sayesinde burası '2026-05-20' formatında dolacak
 })
 
 const handleSubmit = async () => {
@@ -124,30 +123,34 @@ const handleSubmit = async () => {
     const userEmail = localStorage.getItem('userEmail');
 
     if (!userEmail) {
-      alert("Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.");
+      alert("Oturum süreniz dolmuş veya giriş yapmadınız. Lütfen tekrar giriş yapın. 👤");
       router.push('/login');
       return;
     }
 
     // 2. Go Backend'e veriyi gönderiyoruz
+    // URL'yi senin backend'deki '/add-workshop' rotasıyla tam eşledik
     const response = await axios.post('http://localhost:8080/add-workshop', {
-      email: userEmail, // Go tarafındaki dinamik mail kontrolü için
+      email: userEmail, 
       title: workshop.value.title,
       description: workshop.value.description,
       location: workshop.value.location,
       capacity: parseInt(workshop.value.capacity),
       price: parseFloat(workshop.value.price),
       imageUrl: workshop.value.imageUrl,
-      availableDates: workshop.value.availableDates
+      availableDates: workshop.value.availableDates // Artık tertemiz YYYY-MM-DD gidecek
     });
 
-    if (response.status === 201) {
-      alert("Atölyeniz başarıyla oluşturuldu! ✨");
-      router.push('/workshops'); // Atölyeler listesine yönlendir
+    if (response.status === 201 || response.status === 200) {
+      alert("Atölyeniz başarıyla oluşturuldu ve sisteme kaydedildi! ✨🏛️");
+      router.push('/workshops'); 
     }
   } catch (error) {
-    console.error("Hata:", error);
-    alert("Atölye oluşturulurken bir hata meydana geldi: " + (error.response?.data || "Sunucu hatası"));
+    console.error("Atölye ekleme hatası:", error);
+    
+    // Hata mesajını kullanıcıya daha anlamlı gösterelim
+    const errorMessage = error.response?.data?.message || error.response?.data || "Sunucuyla bağlantı kurulamadı.";
+    alert("Atölye oluşturulurken bir hata meydana geldi: " + errorMessage);
   }
 }
 </script>
