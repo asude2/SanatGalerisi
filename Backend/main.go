@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,14 +47,16 @@ type CreateArtworkRequest struct {
 	ArtistID    int     `json:"artistId"`
 }
 type Artwork struct {
-	ID          int     `json:"id"`
-	Title       string  `json:"title"`
-	ArtistID    int     `json:"artistId"`
-	Artist      string  `json:"artist"`
-	Price       float64 `json:"price"`
-	ImageUrl    string  `json:"imageUrl"`
-	Description string  `json:"description"`
-	Category    string  `json:"category"`
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	ArtistID     int     `json:"artistId"`
+	Artist       string  `json:"artist"`
+	Price        float64 `json:"price"`
+	ImageUrl     string  `json:"imageUrl"`
+	Description  string  `json:"description"`
+	Category     string  `json:"category"`
+	IsCampaign   bool    `json:"IsCampaign"`
+	DiscountRate int     `json:"DiscountRate"`
 }
 type Workshop struct {
 	Id             int     `json:"id"`
@@ -241,15 +245,16 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
+	// SORGULAMA: Yeni kolonları (IsCampaign, DiscountRate) SELECT kısmına ekledik
 	rows, err := db.Query(`
-        SELECT 
-            aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl,
-            ISNULL(aw.Description, ''),
-            ISNULL(aw.Category, ''),
-            ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı')
-        FROM Artworks aw
-        LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
-    `)
+			SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl,
+				ISNULL(aw.Description, ''), ISNULL(aw.Category, ''),
+				ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı'),
+				aw.IsCampaign, aw.DiscountRate
+			FROM Artworks aw
+			LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
+	`)
+
 	if err != nil {
 		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
 		return
@@ -259,7 +264,12 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	artworks := []Artwork{}
 	for rows.Next() {
 		var a Artwork
-		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Description, &a.Category, &a.Artist)
+		// SCAN: Yeni kolonları struct'taki karşılıklarına eşliyoruz
+		err := rows.Scan(
+			&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl,
+			&a.Description, &a.Category, &a.Artist,
+			&a.IsCampaign, &a.DiscountRate, // BURASI KRİTİK!
+		)
 		if err != nil {
 			fmt.Println("Scan hatası:", err)
 			continue
@@ -1422,7 +1432,75 @@ func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Satın alma işlemi başarıyla tamamlandı! 🎉"})
 }
 
+func ApplyRandomCampaigns(db *sql.DB) error {
+	// 1. Önce tüm indirimleri tertemiz sıfırla
+	_, err := db.Exec("UPDATE Artworks SET IsCampaign = 0, DiscountRate = 0")
+	if err != nil {
+		log.Println("Sıfırlama hatası:", err)
+		return err
+	}
+
+	// 2. Sadece geçerli ID'leri çek (ID'nin boş olmadığını garanti ediyoruz)
+	rows, err := db.Query("SELECT Id FROM Artworks WHERE Id IS NOT NULL")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+
+	total := len(ids)
+	if total == 0 {
+		log.Println("Veritabanında eser bulunamadı.")
+		return nil
+	}
+
+	// 3. %40 hesapla ve listeyi karıştır
+	countToDiscount := int(math.Round(float64(total) * 0.4))
+	// Eğer 1-2 eser varsa en az 1 tanesine indirim yapsın diye:
+	if countToDiscount == 0 && total > 0 {
+		countToDiscount = 1
+	}
+
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
+
+	// 4. İndirimleri Uygula (SQL Server tip hatasını CAST ile çözüyoruz)
+	for i := 0; i < countToDiscount; i++ {
+		randomRate := r.Intn(41) + 10 // %10-50 arası rastgele oran
+
+		// CAST(Id AS INT) diyerek SQL'in kafasındaki soru işaretlerini siliyoruz
+		query := "UPDATE Artworks SET [DiscountRate] = @p1, [IsCampaign] = 1 WHERE CAST(Id AS INT) = @p2"
+
+		_, err := db.Exec(query,
+			sql.Named("p1", randomRate),
+			sql.Named("p2", ids[i]))
+
+		if err != nil {
+			log.Printf("❌ ID %d güncellenemedi: %v", ids[i], err)
+		} else {
+			log.Printf("✅ BAŞARILI: ID %d için %% %d indirim tanımlandı.", ids[i], randomRate)
+		}
+	}
+	return nil
+}
+
 func main() {
+	// 1. Veritabanı bağlantısını kur (Burada kendi connString'in olduğunu varsayıyorum)
+	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
+	db, err := sql.Open("sqlserver", connString)
+	if err != nil {
+		log.Fatal("Veritabanı bağlantı hatası:", err)
+	}
+	defer db.Close()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/register", registerHandler)
 	mux.HandleFunc("/login", loginHandler)
@@ -1454,24 +1532,31 @@ func main() {
 	mux.HandleFunc("/confirm-sale", confirmArtworksSaleHandler)
 	mux.HandleFunc("/seller-orders", getSellerOrdersHandler)
 
+	// --- KRİTİK DOKUNUŞ: KAMPANYALARI BURADA TETİKLİYORUZ ---
+	fmt.Println("Günlük kampanyalar veritabanına işleniyor...")
+	err = ApplyRandomCampaigns(db)
+	if err != nil {
+		log.Printf("⚠️ Kampanya tanımlama hatası: %v", err)
+	} else {
+		fmt.Println("✅ Kampanyalar başarıyla sabitlendi!")
+	}
+	// -----------------------------------------------------
+
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*") // Güvenlik için daha sonra frontend adresini yazabilirsin
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		// Eğer tarayıcı "izin var mı?" (OPTIONS) diye soruyorsa, direkt OK de ve bitir.
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		// Değilse normal akışa devam et
 		mux.ServeHTTP(w, r)
 	})
 
 	fmt.Println("Server 8080 portunda çalışıyor...")
-	// ListenAndServe içine 'mux' yerine 'finalHandler' yazıyoruz!
-	err := http.ListenAndServe(":8080", finalHandler)
+	err = http.ListenAndServe(":8080", finalHandler)
 	if err != nil {
 		log.Fatal(err)
 	}

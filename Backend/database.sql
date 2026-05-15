@@ -115,6 +115,9 @@ INSERT INTO Coupons (Code, DiscountAmount, IsActive) VALUES ('SANAT100', 100.00,
 
 
 
+ALTER TABLE Artworks ADD IsCampaign BIT DEFAULT 0;
+ALTER TABLE Artworks ADD DiscountRate INT DEFAULT 0;
+
 -- SELECT a.Title, r.ArtistName, a.Category, a.Price 
 -- FROM Artworks a 
 -- JOIN Artists r ON a.ArtistID = r.ArtistID;
@@ -168,3 +171,6 @@ DELETE FROM ArtworkPurchases WHERE SellerID NOT IN (SELECT UserID FROM Users);
 GO
 
 UPDATE Artworks SET OwnerID = 2 WHERE OwnerID IS NULL;
+
+-- Kolon tiplerini görmek için:
+EXEC sp_help 'Artworks';

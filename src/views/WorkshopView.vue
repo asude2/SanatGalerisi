@@ -24,6 +24,7 @@
         <WorkshopCard 
           v-for="ws in processedWorkshops"
           :key="ws.id" 
+          :artwork="ws"
           :id="ws.id"
           :title="ws.title"
           :instructorName="ws.instructorName"

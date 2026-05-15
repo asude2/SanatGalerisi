@@ -120,18 +120,15 @@
         </div>
       </div>
 
-      <div v-if="filteredArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-        <ArtworkCard 
-          v-for="artwork in filteredArtworks" 
-          :key="artwork.id"
-          :id="artwork.id"
-          :title="artwork.title" 
-          :artist="artwork.artist" 
-          :price="artwork.price" 
-          :image="artwork.imageUrl"
-        />
-      </div>
+        <div v-if="filteredArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          <ArtworkCard 
+            v-for="art in filteredArtworks" 
+            :key="art.Id || art.id"
+            :artwork="art" 
+          />
+        </div>
 
+        
       <div v-else class="text-center py-32 bg-white rounded-[40px] border border-dashed border-gray-200">
         <span class="text-7xl block mb-6">🏝️</span>
         <h3 class="text-2xl font-bold text-gray-800 mb-2">Sonuç Bulunamadı</h3>
