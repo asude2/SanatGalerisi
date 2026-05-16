@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -15,33 +16,30 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var jwtKey = []byte("cok_gizli_anahtar_123")
+var connString = "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;TrustServerCertificate=true;"
+
+// --- MODELLER (Eski + Yeni) ---
+
 type User struct {
 	ID        int    `json:"id"`
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
 	Email     string `json:"email"`
 	Password  string `json:"password"`
-	UserRole  string `json:"role"` // 'User' veya 'Instructor'
+	UserRole  string `json:"role"` // 'User', 'Instructor', 'Admin'
 	Biography string `json:"biography"`
 }
 
-// 2. Login Yanıtı (Frontend'e rolü de söylemeliyiz)
 type LoginResponse struct {
-	Message string `json:"message"`
-	Token   string `json:"token"`
-	Role    string `json:"role"` // Vue tarafı buna bakıp butonları gösterecek
-	UserID  int    `json:"userId"`
-	Email   string `json:"email"`
+	Message   string `json:"message"`
+	Token     string `json:"token"`
+	Role      string `json:"role"`
+	UserID    int    `json:"userId"`
+	Email     string `json:"email"`
+	FirstName string `json:"firstName"`
 }
 
-// 3. Ekleme isteği için
-type CreateArtworkRequest struct {
-	Title       string  `json:"title"`
-	Price       float64 `json:"price"`
-	ImageUrl    string  `json:"imageUrl"`
-	Description string  `json:"description"`
-	ArtistID    int     `json:"artistId"`
-}
 type Artwork struct {
 	ID          int     `json:"id"`
 	Title       string  `json:"title"`
@@ -52,6 +50,7 @@ type Artwork struct {
 	Description string  `json:"description"`
 	Category    string  `json:"category"`
 }
+
 type Workshop struct {
 	Id             int     `json:"id"`
 	Title          string  `json:"title"`
@@ -64,28 +63,48 @@ type Workshop struct {
 	AvailableDates string  `json:"availableDates"`
 }
 
-// Eğitmenin kendi atölyelerini döndürmek için struct
-type MyWorkshop struct {
-	Id             int     `json:"id"`
-	Title          string  `json:"title"`
-	Description    string  `json:"description"`
-	Location       string  `json:"location"`
-	Capacity       int     `json:"capacity"`
-	Price          float64 `json:"price"`
-	ImageUrl       string  `json:"imageUrl"`
-	AvailableDates string  `json:"availableDates"`
+type SupportTicket struct {
+	TicketID    int       `json:"ticketId"`
+	UserID      int       `json:"userId"`
+	Subject     string    `json:"subject"`
+	Message     string    `json:"message"`
+	SupportType string    `json:"supportType"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
-type EnrollmentRequest struct {
-	Email            string `json:"email"`
-	WorkshopId       int    `json:"workshopId"`
-	ParticipantCount int    `json:"participantCount"`
-	ReservedDate     string `json:"reservedDate"`
+
+type SupportMessage struct {
+	MessageID  int       `json:"messageId"`
+	TicketID   int       `json:"ticketId"`
+	SenderID   int       `json:"senderId"`
+	SenderName string    `json:"senderName"`
+	SenderRole string    `json:"senderRole"`
+	Message    string    `json:"message"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
-type BuyArtwork struct {
-	Email     string  `json:"email"`
-	ArtworkId int     `json:"artworkId"`
-	Price     float64 `json:"price"`
+
+type Comment struct {
+	CommentID   int       `json:"commentId"`
+	UserID      int       `json:"userId"`
+	UserName    string    `json:"userName"`
+	TargetID    int       `json:"targetId"`
+	TargetType  string    `json:"targetType"`
+	CommentText string    `json:"commentText"`
+	Rating      int       `json:"rating"`
+	Upvotes     int       `json:"upvotes"`
+	IsVerified  bool      `json:"isVerified"`
+	CreatedAt   time.Time `json:"createdAt"`
+	AdminReply  *string   `json:"adminReply"`
 }
+
+type InteractionLog struct {
+	UserID          *int   `json:"userId"`
+	TargetID        int    `json:"targetId"`
+	TargetType      string `json:"targetType"`
+	InteractionType string `json:"interactionType"`
+}
+
 type ArtworkRequest struct {
 	Title       string  `json:"title"`
 	Price       float64 `json:"price"`
@@ -94,6 +113,7 @@ type ArtworkRequest struct {
 	Description string  `json:"description"`
 	Email       string  `json:"email"`
 }
+
 type WorkshopRequest struct {
 	Email          string  `json:"email"`
 	Title          string  `json:"title"`
@@ -105,699 +125,338 @@ type WorkshopRequest struct {
 	AvailableDates string  `json:"availableDates"`
 }
 
-// ! KAYIT
-func registerHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
+// --- MIDDLEWARE ---
 
-	var u User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, "Geçersiz veri formatı", http.StatusBadRequest)
-		return
+type contextKey string
+
+const (
+	userEmailKey contextKey = "userEmail"
+	userRoleKey  contextKey = "userRole"
+	userIDKey    contextKey = "userId"
+)
+
+func isAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Yetkilendirme başlığı eksik", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		claims := jwt.MapClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return jwtKey, nil
+		})
+
+		if err != nil || !token.Valid {
+			http.Error(w, "Geçersiz token", http.StatusUnauthorized)
+			return
+		}
+
+		email := claims["email"].(string)
+		role := claims["role"].(string)
+
+		db, _ := sql.Open("sqlserver", connString)
+		defer db.Close()
+		var userID int
+		db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", email).Scan(&userID)
+
+		ctx := context.WithValue(r.Context(), userEmailKey, email)
+		ctx = context.WithValue(ctx, userRoleKey, role)
+		ctx = context.WithValue(ctx, userIDKey, userID)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
 	}
+}
 
-	if u.UserRole == "" {
-		u.UserRole = "User"
-	}
-
-	// 1. Şifreyi Hashle
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
-	if err != nil {
-		http.Error(w, "Şifre işlenemedi", http.StatusInternalServerError)
-		return
-	}
-
-	// 2. Veritabanına Bağlan
-	connString := "sqlserver://localhost:1433?database=SanatProjesi&trusted_connection=yes&encrypt=disable"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		log.Println("Bağlantı hatası:", err)
-		http.Error(w, "Veritabanı bağlantı hatası", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	// 3. Veriyi Kaydet
-	query := "INSERT INTO Users (FirstName, LastName, Email, Password, UserRole) VALUES (@p1, @p2, @p3, @p4, @p5)"
-	_, err = db.Exec(query, u.FirstName, u.LastName, u.Email, string(hashedPassword), u.UserRole)
-
-	if err != nil {
-		log.Println("DB Yazma Hatası:", err)
-		// Eğer e-posta zaten varsa UNIQUE kısıtlamasından dolayı hata verebilir
-		http.Error(w, "Kayıt yapılamadı (E-posta kullanımda olabilir)", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Kayıt başarıyla tamamlandı!",
-		"role":    u.UserRole,
+func isAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return isAuth(func(w http.ResponseWriter, r *http.Request) {
+		role := r.Context().Value(userRoleKey).(string)
+		if role != "Admin" && role != "Instructor" {
+			http.Error(w, "Yetkisiz erişim", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
-// ! GİRİŞ
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+// --- YARDIMCI FONKSİYONLAR ---
+
+func checkEnrollment(userID int, workshopID int) bool {
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM WorkshopEnrollments e JOIN Users u ON e.UserEmail = u.Email WHERE u.UserID = @p1 AND e.WorkshopId = @p2", userID, workshopID).Scan(&count)
+	return count > 0
+}
+
+func checkPurchase(userID int, artworkID int) bool {
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM ArtworkPurchases p JOIN Users u ON p.UserEmail = u.Email WHERE u.UserID = @p1 AND p.ArtworkId = @p2", userID, artworkID).Scan(&count)
+	return count > 0
+}
+
+// --- HANDLERS (Hepsi) ---
+
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	var u User
+	json.NewDecoder(r.Body).Decode(&u)
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	query := "INSERT INTO Users (FirstName, LastName, Email, Password, UserRole) VALUES (@p1, @p2, @p3, @p4, @p5)"
+	_, err := db.Exec(query, u.FirstName, u.LastName, u.Email, string(hashedPassword), u.UserRole)
+	if err != nil {
+		http.Error(w, "Kayıt hatası", 500)
 		return
 	}
+	w.WriteHeader(201)
+}
 
+func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var creds struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "Geçersiz istek", http.StatusBadRequest)
-		return
-	}
-
-	// 1. Veritabanı Bağlantısı
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	json.NewDecoder(r.Body).Decode(&creds)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	var dbPassword string
-	var firstName string
-	var userRole string
-
-	// Sorgu Güncellendi: UserRole bilgisini de çekiyoruz
-	query := "SELECT Password, FirstName, UserRole FROM Users WHERE Email = @p1"
-	err = db.QueryRow(query, creds.Email).Scan(&dbPassword, &firstName, &userRole)
-	if err != nil {
-		http.Error(w, "Kullanıcı bulunamadı", http.StatusUnauthorized)
+	var dbPassword, firstName, role string
+	var userID int
+	err := db.QueryRow("SELECT UserID, Password, FirstName, UserRole FROM Users WHERE Email = @p1", creds.Email).Scan(&userID, &dbPassword, &firstName, &role)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(creds.Password)) != nil {
+		http.Error(w, "Hatalı giriş", 401)
 		return
 	}
-
-	// 2. Şifre Karşılaştırma
-	err = bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(creds.Password))
-	if err != nil {
-		http.Error(w, "Hatalı şifre", http.StatusUnauthorized)
-		return
-	}
-
-	// 3. Token Oluşturma (Rol bilgisini içine ekledik)
-	var jwtKey = []byte("cok_gizli_anahtar_123")
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"email":     creds.Email,
-		"firstName": firstName,
-		"role":      userRole, // Vue tarafı için token içinde rolü saklıyoruz
-		"exp":       time.Now().Add(time.Hour * 24).Unix(),
+		"email": creds.Email, "role": role, "exp": time.Now().Add(time.Hour * 24).Unix(),
 	})
-
-	tokenString, err := token.SignedString(jwtKey)
-	if err != nil {
-		http.Error(w, "Token oluşturulamadı", http.StatusInternalServerError)
-		return
-	}
-
-	// 4. Yanıt Gönderme (JSON içine rolü ekledik)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	tokenString, _ := token.SignedString(jwtKey)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":   "Giriş başarılı!",
-		"token":     tokenString,
-		"role":      userRole, // 'User' veya 'Instructor' döner
-		"firstName": firstName,
+		"token": tokenString, "role": role, "firstName": firstName, "userId": userID, "email": creds.Email,
 	})
 }
 
-// ! ESERLERİ GETİRME
 func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı bağlantı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	rows, err := db.Query(`
-        SELECT 
-            aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl,
-            ISNULL(aw.Description, ''),
-            ISNULL(aw.Category, ''),
-            ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı')
-        FROM Artworks aw
-        LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
-    `)
-	if err != nil {
-		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
-		return
-	}
+	rows, _ := db.Query(`SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl, ISNULL(aw.Description, ''), ISNULL(aw.Category, ''), ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı') FROM Artworks aw LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID`)
 	defer rows.Close()
-
-	artworks := []Artwork{}
+	var artworks []Artwork
 	for rows.Next() {
 		var a Artwork
-		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Description, &a.Category, &a.Artist)
-		if err != nil {
-			fmt.Println("Scan hatası:", err)
-			continue
-		}
+		rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Description, &a.Category, &a.Artist)
 		artworks = append(artworks, a)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(artworks)
 }
 
-// ! PROFİL BİLGİLERİNİ GETİRME
 func getUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
 	var u User
 	var biography sql.NullString
-
-	// Users ve Artists tablosundan biography'yi al
-	query := `
-		SELECT u.FirstName, u.LastName, u.Email, ISNULL(a.Biography, '')
-		FROM Users u
-		LEFT JOIN Artists a ON u.UserID = a.UserID
-		WHERE u.Email = @p1
-	`
-	err = db.QueryRow(query, email).Scan(&u.FirstName, &u.LastName, &u.Email, &biography)
-
+	query := `SELECT u.FirstName, u.LastName, u.Email, ISNULL(a.Biography, '') FROM Users u LEFT JOIN Artists a ON u.UserID = a.UserID WHERE u.Email = @p1`
+	err := db.QueryRow(query, email).Scan(&u.FirstName, &u.LastName, &u.Email, &biography)
 	if err != nil {
-		http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
+		http.Error(w, "Kullanıcı bulunamadı", 404)
 		return
 	}
-
 	if biography.Valid {
 		u.Biography = biography.String
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(u)
 }
 
-// ! PROFİL BİLGİLERİNİ GÜNCELLEME
 func updateProfileHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "PUT, POST, GET, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	// 1. Frontend'den gelen güncel bilgileri oku
 	var u User
-	err := json.NewDecoder(r.Body).Decode(&u)
-	if err != nil {
-		http.Error(w, "Geçersiz veri", http.StatusBadRequest)
-		return
-	}
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	json.NewDecoder(r.Body).Decode(&u)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// E-posta adresini anahtar olarak kullanıp diğer alanları güncelliyoruz
-	query := "UPDATE Users SET FirstName = @p1, LastName = @p2 WHERE Email = @p3"
-	_, err = db.Exec(query, u.FirstName, u.LastName, u.Email)
-
-	if err != nil {
-		http.Error(w, "Güncelleme başarısız", http.StatusInternalServerError)
-		return
+	var userID int
+	db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", u.Email).Scan(&userID)
+	db.Exec("UPDATE Users SET FirstName = @p1, LastName = @p2 WHERE UserID = @p3", u.FirstName, u.LastName, userID)
+	var artistID int
+	err := db.QueryRow("SELECT ArtistID FROM Artists WHERE UserID = @p1", userID).Scan(&artistID)
+	if err == nil {
+		db.Exec("UPDATE Artists SET Biography = @p1, ArtistName = @p2 WHERE ArtistID = @p3", u.Biography, u.FirstName+" "+u.LastName, artistID)
+	} else {
+		db.Exec("INSERT INTO Artists (UserID, Biography, ArtistName) VALUES (@p1, @p2, @p3)", userID, u.Biography, u.FirstName+" "+u.LastName)
 	}
-
-	// Eğer biography varsa Artists tablosuna kaydet
-	if u.Biography != "" {
-		var userID int
-		err = db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", u.Email).Scan(&userID)
-		if err == nil {
-			// Önce kontrolü yap - artist kaydı var mı?
-			var artistID int
-			err = db.QueryRow("SELECT ArtistID FROM Artists WHERE UserID = @p1", userID).Scan(&artistID)
-
-			if err != nil { // Yoksa ekle
-				db.Exec("INSERT INTO Artists (UserID, Biography) VALUES (@p1, @p2)", userID, u.Biography)
-			} else { // Varsa güncelle
-				db.Exec("UPDATE Artists SET Biography = @p1 WHERE UserID = @p2", u.Biography, userID)
-			}
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Profil güncellendi!"})
+	w.WriteHeader(200)
 }
 
-// ! ŞİFRE DEĞİŞTİRME
 func changePasswordHandler(w http.ResponseWriter, r *http.Request) {
-	// Frontend'den gelecek veri yapısı
-	type PasswordRequest struct {
+	var req struct {
 		Email       string `json:"email"`
 		OldPassword string `json:"oldPassword"`
 		NewPassword string `json:"newPassword"`
 	}
-
-	var req PasswordRequest
 	json.NewDecoder(r.Body).Decode(&req)
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// 1. Mevcut hash'li şifreyi veritabanından getir
-	var storedPassword string
-	err := db.QueryRow("SELECT Password FROM Users WHERE Email = @p1", req.Email).Scan(&storedPassword)
-	if err != nil {
-		http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
+	var dbPassword string
+	db.QueryRow("SELECT Password FROM Users WHERE Email = @p1", req.Email).Scan(&dbPassword)
+	if bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(req.OldPassword)) != nil {
+		http.Error(w, "Eski şifre hatalı", 401)
 		return
 	}
-
-	// 2. Eski şifre doğru mu? (bcrypt ile kontrol)
-	err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(req.OldPassword))
-	if err != nil {
-		http.Error(w, "Eski şifre hatalı", http.StatusUnauthorized)
-		return
-	}
-
-	// 3. Yeni şifreyi hash'le
 	newHash, _ := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
-
-	// 4. Veritabanında güncelle
-	_, err = db.Exec("UPDATE Users SET Password = @p1 WHERE Email = @p2", string(newHash), req.Email)
-	if err != nil {
-		http.Error(w, "Şifre güncellenemedi", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Şifre başarıyla değiştirildi!"})
+	db.Exec("UPDATE Users SET Password = @p1 WHERE Email = @p2", string(newHash), req.Email)
+	w.WriteHeader(200)
 }
 
-// ! ATÖLYELERİ GETİRME
 func getWorkshopsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	query := `
-        SELECT 
-            w.Id, w.Title, ISNULL(w.Description, ''), 
-            (u.FirstName + ' ' + u.LastName) as InstructorName, 
-            ISNULL(w.AvailableDates, ''), 
-            w.Location, w.Capacity, w.Price, ISNULL(w.ImageUrl, '') 
-        FROM Workshops w
-        JOIN Users u ON w.InstructorID = u.UserID
-    `
-	rows, err := db.Query(query)
-	if err != nil {
-		http.Error(w, "Sorgu hatası: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	rows, _ := db.Query(`SELECT w.Id, w.Title, w.Description, u.FirstName + ' ' + u.LastName, w.AvailableDates, w.Location, w.Capacity, w.Price, w.ImageUrl FROM Workshops w JOIN Users u ON w.InstructorID = u.UserID`)
 	defer rows.Close()
-
-	workshops := []Workshop{}
+	var workshops []Workshop
 	for rows.Next() {
 		var ws Workshop
-		err := rows.Scan(
-			&ws.Id,
-			&ws.Title,
-			&ws.Description,
-			&ws.InstructorName,
-			&ws.AvailableDates,
-			&ws.Location,
-			&ws.Capacity,
-			&ws.Price,
-			&ws.ImageUrl,
-		)
-
-		if err != nil {
-			fmt.Println("Scan hatası:", err)
-			continue
-		}
-
+		rows.Scan(&ws.Id, &ws.Title, &ws.Description, &ws.InstructorName, &ws.AvailableDates, &ws.Location, &ws.Capacity, &ws.Price, &ws.ImageUrl)
 		workshops = append(workshops, ws)
-	}
-
-	if workshops == nil {
-		workshops = []Workshop{}
 	}
 	json.NewEncoder(w).Encode(workshops)
 }
 
-// ! FAVORİLERE EKLEME
 func addFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email     string `json:"email"`
 		ArtworkId int    `json:"artworkId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Geçersiz istek", http.StatusBadRequest)
-		return
-	}
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	json.NewDecoder(r.Body).Decode(&req)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	//favorilere ekle(eğer zaten varsa UNIQUE constraint hata verecektir)
-	query := "INSERT INTO Favorites (UserEmail, ArtworkId) VALUES (@p1, @p2)"
-	_, err = db.Exec(query, req.Email, req.ArtworkId)
-
-	if err != nil {
-		http.Error(w, "Bu eser zaten favorilerinizde veya bir hata oluştu", http.StatusConflict)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Favorilere eklendi! ❤️"})
+	db.Exec("INSERT INTO Favorites (UserEmail, ArtworkId) VALUES (@p1, @p2)", req.Email, req.ArtworkId)
+	w.WriteHeader(201)
 }
 
-// ! FAVORİLERDEN ÇIKARMA
 func deleteFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email     string `json:"email"`
 		ArtworkId int    `json:"artworkId"`
 	}
 	json.NewDecoder(r.Body).Decode(&req)
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// Favoriyi sil
-	query := "DELETE FROM Favorites WHERE UserEmail = @p1 AND ArtworkId = @p2"
-	_, err := db.Exec(query, req.Email, req.ArtworkId)
-
-	if err != nil {
-		http.Error(w, "Silme işlemi başarısız", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Favorilerden çıkarıldı! 💔"})
+	db.Exec("DELETE FROM Favorites WHERE UserEmail = @p1 AND ArtworkId = @p2", req.Email, req.ArtworkId)
+	w.WriteHeader(200)
 }
 
-// ! FAVORİ Mİ KONTROLÜ
 func checkFavoriteHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	email := r.URL.Query().Get("email")
 	artworkId := r.URL.Query().Get("artworkId")
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
 	var count int
-	// Bu ikilinin tabloda olup olmadığını sayıyoruz
-	query := "SELECT COUNT(*) FROM Favorites WHERE UserEmail = @p1 AND ArtworkId = @p2"
-	err = db.QueryRow(query, email, artworkId).Scan(&count)
-
-	exists := false
-	if err == nil && count > 0 {
-		exists = true
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"isFavorite": exists})
+	db.QueryRow("SELECT COUNT(*) FROM Favorites WHERE UserEmail = @p1 AND ArtworkId = @p2", email, artworkId).Scan(&count)
+	json.NewEncoder(w).Encode(map[string]bool{"isFavorite": count > 0})
 }
 
-// ! FAVORİ LİSTESİNİ GETİRME
 func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	query := `
-        SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl, 
-               ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı')
-        FROM Favorites f
-        JOIN Artworks aw ON f.ArtworkId = aw.Id
-        LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
-        WHERE f.UserEmail = @p1
-    `
-	rows, err := db.Query(query, email)
-	if err != nil {
-		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
-		return
-	}
+	query := `SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl, ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı') FROM Favorites f JOIN Artworks aw ON f.ArtworkId = aw.Id LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID WHERE f.UserEmail = @p1`
+	rows, _ := db.Query(query, email)
 	defer rows.Close()
-
 	var favs []Artwork
 	for rows.Next() {
 		var a Artwork
-		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Artist)
-		if err != nil {
-			continue
-		}
+		rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Artist)
 		favs = append(favs, a)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(favs)
 }
 
-// ! ATÖLYEYE KAYIT OLMA
 func enrollWorkshopHandler(w http.ResponseWriter, r *http.Request) {
-	var req EnrollmentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Geçersiz veri", http.StatusBadRequest)
-		return
+	var req struct {
+		Email            string `json:"email"`
+		WorkshopId       int    `json:"workshopId"`
+		ParticipantCount int    `json:"participantCount"`
+		ReservedDate     string `json:"reservedDate"`
 	}
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı bağlantı hatası", http.StatusInternalServerError)
-		return
-	}
+	json.NewDecoder(r.Body).Decode(&req)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// Veritabanına kayıt ekleme (Katılımcı sayısı ve Tarih dahil)
-	query := `INSERT INTO WorkshopEnrollments (UserEmail, WorkshopId, ParticipantCount, ReservedDate) 
-              VALUES (@p1, @p2, @p3, @p4)`
-
-	_, err = db.Exec(query, req.Email, req.WorkshopId, req.ParticipantCount, req.ReservedDate)
-	if err != nil {
-		http.Error(w, "Rezervasyon oluşturulamadı. Lütfen tekrar deneyin.", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyonunuz başarıyla oluşturuldu! 🎉"})
+	db.Exec("INSERT INTO WorkshopEnrollments (UserEmail, WorkshopId, ParticipantCount, ReservedDate) VALUES (@p1, @p2, @p3, @p4)", req.Email, req.WorkshopId, req.ParticipantCount, req.ReservedDate)
+	w.WriteHeader(201)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon başarılı!"})
 }
 
-// ! KULLANICININ ATÖLYE KAYITLARINI GETİRME
 func getUserEnrollmentsHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
-	if email == "" {
-		http.Error(w, "Email parametresi gerekli", http.StatusBadRequest)
-		return
-	}
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	query := `
-        SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, e.CreatedAt, w.Location, w.AvailableDates
-        FROM WorkshopEnrollments e
-        JOIN Workshops w ON e.WorkshopId = w.Id
-        WHERE e.UserEmail = @p1
-        ORDER BY e.CreatedAt DESC`
-
-	rows, err := db.Query(query, email)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	query := `SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, e.CreatedAt, w.Location, w.AvailableDates FROM WorkshopEnrollments e JOIN Workshops w ON e.WorkshopId = w.Id WHERE e.UserEmail = @p1`
+	rows, _ := db.Query(query, email)
 	defer rows.Close()
-
-	var enrollments []map[string]interface{}
+	var results []map[string]interface{}
 	for rows.Next() {
 		var id, pCount int
 		var title, rDate, cAt, location, aDates string
 		rows.Scan(&id, &title, &pCount, &rDate, &cAt, &location, &aDates)
-
-		enrollments = append(enrollments, map[string]interface{}{
-			"id":               id,
-			"workshopTitle":    title,
-			"participantCount": pCount,
-			"reservedDate":     rDate,
-			"createdAt":        cAt,
-			"location":         location,
-			"availableDates":   aDates,
+		results = append(results, map[string]interface{}{
+			"id": id, "workshopTitle": title, "participantCount": pCount, "reservedDate": rDate, "createdAt": cAt, "location": location, "availableDates": aDates,
 		})
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(enrollments)
+	json.NewEncoder(w).Encode(results)
 }
 
-// ! ATÖLYE KAYIT BİLGİLERİNİ GÜNCELLEME
 func updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
-		http.Error(w, "Sadece PUT metodu destekleniyor", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var data struct {
 		ID               int    `json:"id"`
 		ParticipantCount int    `json:"participantCount"`
 		ReservedDate     string `json:"reservedDate"`
 	}
 	json.NewDecoder(r.Body).Decode(&data)
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	query := "UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2 WHERE Id = @p3"
-	_, err = db.Exec(query, data.ParticipantCount, data.ReservedDate, data.ID)
-
-	if err != nil {
-		http.Error(w, "Güncelleme hatası: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon başarıyla güncellendi"})
+	db.Exec("UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2 WHERE Id = @p3", data.ParticipantCount, data.ReservedDate, data.ID)
+	w.WriteHeader(200)
 }
 
-// ! ATÖLYE KAYIT SİLME
 func deleteEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Sadece DELETE metodu destekleniyor", http.StatusMethodNotAllowed)
-		return
-	}
-
 	id := r.URL.Query().Get("id")
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	query := "DELETE FROM WorkshopEnrollments WHERE Id = @p1"
-	_, err = db.Exec(query, id)
-
-	if err != nil {
-		http.Error(w, "Silme hatası: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon başarıyla iptal edildi"})
+	db.Exec("DELETE FROM WorkshopEnrollments WHERE Id = @p1", id)
+	w.WriteHeader(200)
 }
 
-// ! ESER SATIN ALMA
 func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	if r.Method == "OPTIONS" {
-		return
+	var req struct {
+		Email     string  `json:"email"`
+		ArtworkId int     `json:"artworkId"`
+		Price     float64 `json:"price"`
 	}
-
-	var req BuyArtwork
 	json.NewDecoder(r.Body).Decode(&req)
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// --- Eser zaten satılmış mı? ---
 	var exists int
-	checkQuery := "SELECT COUNT(*) FROM ArtworkPurchases WHERE ArtworkId = @p1"
-	db.QueryRow(checkQuery, req.ArtworkId).Scan(&exists)
-
+	db.QueryRow("SELECT COUNT(*) FROM ArtworkPurchases WHERE ArtworkId = @p1", req.ArtworkId).Scan(&exists)
 	if exists > 0 {
-		// 409 Conflict: "Bu eser zaten satılmış/alınmış"
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Bu eser daha önce satın alınmış! ❌"})
+		w.WriteHeader(409)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Eser zaten satılmış!"})
 		return
 	}
-
-	// satılmadıysa devam et
-	query := `INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice) VALUES (@p1, @p2, @p3)`
-	_, err := db.Exec(query, req.Email, req.ArtworkId, req.Price)
-
-	if err != nil {
-		http.Error(w, "DB Hatası: "+err.Error(), 500)
-		return
-	}
-	json.NewEncoder(w).Encode(map[string]string{"message": "Eser başarıyla satın alındı! 🎉"})
+	db.Exec("INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice) VALUES (@p1, @p2, @p3)", req.Email, req.ArtworkId, req.Price)
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Satın alma başarılı!"})
 }
 
-// ! KULLANICININ SATIN ALDIĞI ESERLERİ GETİRME
 func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	email := r.URL.Query().Get("email")
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// Artworks tablosuyla birleştirip başlığı ve resmi de alıyoruz
-	query := `
-        SELECT p.Id, a.Title, p.PurchasePrice, p.Status, p.CreatedAt, a.ImageUrl 
-        FROM ArtworkPurchases p
-        JOIN Artworks a ON p.ArtworkId = a.Id
-        WHERE p.UserEmail = @p1`
-
+	query := `SELECT p.Id, a.Title, p.PurchasePrice, p.Status, p.CreatedAt, a.ImageUrl FROM ArtworkPurchases p JOIN Artworks a ON p.ArtworkId = a.Id WHERE p.UserEmail = @p1`
 	rows, _ := db.Query(query, email)
 	defer rows.Close()
-
 	var results []map[string]interface{}
 	for rows.Next() {
 		var id int
@@ -811,399 +470,317 @@ func getUserPurchasesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(results)
 }
 
-// ! ESER EKLEME (INSTRUCTOR İÇİN)
 func addArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-
 	var req ArtworkRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Geçersiz veri", http.StatusBadRequest)
-		return
-	}
-
-	if req.Email == "" {
-		http.Error(w, "Kullanıcı e-posta bilgisi eksik", http.StatusBadRequest)
-		return
-	}
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	json.NewDecoder(r.Body).Decode(&req)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// 1. ADIM: Kullanıcının UserID'sini bulalım (Email üzerinden)
 	var userID int
-	var firstName string
-	var lastName string
-	err := db.QueryRow("SELECT UserID, FirstName, LastName FROM Users WHERE Email = @p1", req.Email).Scan(&userID, &firstName, &lastName)
-	if err != nil {
-		http.Error(w, "Kullanıcı bulunamadı", http.StatusUnauthorized)
-		return
-	}
-
-	// 2. ADIM: Bu kullanıcı Artists tablosunda var mı? Yoksa ekle.
+	var firstName, lastName string
+	db.QueryRow("SELECT UserID, FirstName, LastName FROM Users WHERE Email = @p1", req.Email).Scan(&userID, &firstName, &lastName)
 	var artistID int
 	artistName := firstName + " " + lastName
-
-	err = db.QueryRow("SELECT ArtistID FROM Artists WHERE UserID = @p1", userID).Scan(&artistID)
-
-	if err != nil { // Kayıtlı değilse sanatçı olarak ekle
-		err = db.QueryRow("INSERT INTO Artists (UserID, ArtistName) OUTPUT INSERTED.ArtistID VALUES (@p1, @p2)",
-			userID, artistName).Scan(&artistID)
-	} else { // Kayıtlı ise ismi güncelleyelim
-		_, err = db.Exec("UPDATE Artists SET ArtistName = @p1 WHERE ArtistID = @p2", artistName, artistID)
-	}
-
-	// 3. ADIM: Eseri artık gerçek ArtistID ile ekle
-	query := `INSERT INTO Artworks (Title, ArtistID, Price, ImageURL, Description, Category) 
-              VALUES (@p1, @p2, @p3, @p4, @p5, @p6)`
-
-	_, err = db.Exec(query, req.Title, artistID, req.Price, req.ImageUrl, req.Description, req.Category)
-
+	err := db.QueryRow("SELECT ArtistID FROM Artists WHERE UserID = @p1", userID).Scan(&artistID)
 	if err != nil {
-		http.Error(w, "Eser kaydedilemedi: "+err.Error(), http.StatusInternalServerError)
-		return
+		db.QueryRow("INSERT INTO Artists (UserID, ArtistName) OUTPUT INSERTED.ArtistID VALUES (@p1, @p2)", userID, artistName).Scan(&artistID)
 	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Eseriniz başarıyla yayınlandı!"})
+	db.Exec("INSERT INTO Artworks (Title, ArtistID, Price, ImageURL, Description, Category) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)", req.Title, artistID, req.Price, req.ImageUrl, req.Description, req.Category)
+	w.WriteHeader(201)
 }
 
-// ! ESER SİLME
 func deleteArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-
 	var req struct {
 		ArtworkID int    `json:"artworkId"`
 		Email     string `json:"email"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Geçersiz veri", http.StatusBadRequest)
-		return
-	}
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	json.NewDecoder(r.Body).Decode(&req)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// 1. ADIM: Kullanıcının UserID'sini al
-	var userID int
-	err := db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", req.Email).Scan(&userID)
-	if err != nil {
-		http.Error(w, "Kullanıcı bulunamadı", http.StatusUnauthorized)
-		return
-	}
-
-	// 2. ADIM: Eseri kontrol et - bu eser bu kullanıcının mı?
-	var artworkArtistID int
-	err = db.QueryRow("SELECT ArtistID FROM Artworks WHERE Id = @p1", req.ArtworkID).Scan(&artworkArtistID)
-	if err != nil {
-		http.Error(w, "Eser bulunamadı", http.StatusNotFound)
-		return
-	}
-
-	// 3. ADIM: Kullanıcının artist kaydını kontrol et
-	var artistID int
-	err = db.QueryRow("SELECT ArtistID FROM Artists WHERE UserID = @p1", userID).Scan(&artistID)
-	if err != nil || artistID != artworkArtistID {
-		http.Error(w, "Bu eseri silme yetkiniz yok", http.StatusForbidden)
-		return
-	}
-
-	// 4. ADIM: Önce Favorites tablosundan sil
 	db.Exec("DELETE FROM Favorites WHERE ArtworkId = @p1", req.ArtworkID)
-
-	// 5. ADIM: Sonra ArtworkPurchases tablosundan sil
 	db.Exec("DELETE FROM ArtworkPurchases WHERE ArtworkId = @p1", req.ArtworkID)
-
-	// 6. ADIM: Son olarak Artworks tablosundan sil
-	_, err = db.Exec("DELETE FROM Artworks WHERE Id = @p1", req.ArtworkID)
-	if err != nil {
-		http.Error(w, "Eser silinemedi: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Eser başarıyla silindi!"})
+	db.Exec("DELETE FROM Artworks WHERE Id = @p1", req.ArtworkID)
+	w.WriteHeader(200)
 }
 
-// ! SANATÇI DETAYLARI GETIRME
 func getArtistHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-	
 	artistName := r.URL.Query().Get("name")
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
 	var artistInfo struct {
 		Name           string `json:"name"`
 		Biography      string `json:"biography"`
 		ArtworksCount  int    `json:"artworksCount"`
 		WorkshopsCount int    `json:"workshopsCount"`
 	}
-
-	// Sanatçı bilgisini ve eserlerin sayısını ve atölyelerin sayısını getir
-	query := `
-		SELECT 
-			ISNULL(a.ArtistName, ''), 
-			ISNULL(a.Biography, ''), 
-			COUNT(DISTINCT aw.Id) as ArtworkCount,
-			COUNT(DISTINCT w.Id) as WorkshopCount
-		FROM Artists a
-		LEFT JOIN Artworks aw ON a.ArtistID = aw.ArtistID
-		LEFT JOIN Users u ON a.UserID = u.UserID
-		LEFT JOIN Workshops w ON u.UserID = w.InstructorID
-		WHERE a.ArtistName = @p1
-		GROUP BY a.ArtistID, a.ArtistName, a.Biography
-	`
-	err = db.QueryRow(query, artistName).Scan(&artistInfo.Name, &artistInfo.Biography, &artistInfo.ArtworksCount, &artistInfo.WorkshopsCount)
-
-	if err != nil {
-		http.Error(w, "Sanatçı bulunamadı", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
+	query := `SELECT ISNULL(a.ArtistName, ''), ISNULL(a.Biography, ''), COUNT(DISTINCT aw.Id), COUNT(DISTINCT w.Id) FROM Artists a LEFT JOIN Artworks aw ON a.ArtistID = aw.ArtistID LEFT JOIN Users u ON a.UserID = u.UserID LEFT JOIN Workshops w ON u.UserID = w.InstructorID WHERE a.ArtistName = @p1 GROUP BY a.ArtistID, a.ArtistName, a.Biography`
+	db.QueryRow(query, artistName).Scan(&artistInfo.Name, &artistInfo.Biography, &artistInfo.ArtworksCount, &artistInfo.WorkshopsCount)
 	json.NewEncoder(w).Encode(artistInfo)
 }
 
-// ! ATÖLYE EKLEME (INSTRUCTOR İÇİN)
 func addWorkshopHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-
 	var req WorkshopRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Geçersiz veri", http.StatusBadRequest)
-		return
-	}
-
-	if req.Email == "" {
-		http.Error(w, "Kullanıcı e-posta bilgisi eksik", http.StatusBadRequest)
-		return
-	}
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	json.NewDecoder(r.Body).Decode(&req)
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// 1. ADIM: Eğitmenin UserID'sini bulalım (Email üzerinden)
 	var userID int
-	err := db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", req.Email).Scan(&userID)
-	if err != nil {
-		http.Error(w, "Eğitmen hesabı bulunamadı", http.StatusUnauthorized)
-		return
-	}
-
-	// 2. ADIM: Atölyeyi Workshops tablosuna kaydet
-	// Not: Veritabanında InstructorID, Users tablosundaki UserID'ye bağlıdır.
-	query := `INSERT INTO Workshops (Title, Description, InstructorID, Location, Capacity, Price, ImageUrl, AvailableDates) 
-              VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8)`
-
-	_, err = db.Exec(query,
-		req.Title,
-		req.Description,
-		userID,
-		req.Location,
-		req.Capacity,
-		req.Price,
-		req.ImageUrl,
-		req.AvailableDates)
-
-	if err != nil {
-		http.Error(w, "Atölye oluşturulamadı: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Atölyeniz başarıyla oluşturuldu!"})
+	db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", req.Email).Scan(&userID)
+	db.Exec("INSERT INTO Workshops (Title, Description, InstructorID, Location, Capacity, Price, ImageUrl, AvailableDates) VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8)", req.Title, req.Description, userID, req.Location, req.Capacity, req.Price, req.ImageUrl, req.AvailableDates)
+	w.WriteHeader(201)
 }
 
-// ! ATÖLYE SİLME (EĞİTMEN İÇİN)
 func deleteWorkshopHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Sadece DELETE metodu destekleniyor", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var req struct {
 		WorkshopID int    `json:"workshopId"`
 		Email      string `json:"email"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Eğer body'den okumada sorun varsa, query parametresi olarak deneyelim
-		id := r.URL.Query().Get("id")
-		if id == "" {
-			http.Error(w, "Atölye ID'si gerekli", http.StatusBadRequest)
-			return
-		}
-		workshopID, convErr := strconv.Atoi(id)
-		if convErr != nil {
-			http.Error(w, "Geçersiz ID", http.StatusBadRequest)
-			return
-		}
-		req.WorkshopID = workshopID
+		id, _ := strconv.Atoi(r.URL.Query().Get("id"))
+		req.WorkshopID = id
 	}
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// 1. ADIM: Workshopı kontrol et
-	var instructorID int
-	err := db.QueryRow("SELECT InstructorID FROM Workshops WHERE Id = @p1", req.WorkshopID).Scan(&instructorID)
-	if err != nil {
-		http.Error(w, "Atölye bulunamadı", http.StatusNotFound)
-		return
-	}
-
-	// 2. ADIM: Eğer email verilmişse, sahibi olup olmadığını kontrol et
-	if req.Email != "" {
-		var userID int
-		err = db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", req.Email).Scan(&userID)
-		if err != nil || userID != instructorID {
-			http.Error(w, "Bu atölyeyi silme yetkiniz yok", http.StatusForbidden)
-			return
-		}
-	}
-
-	// 3. ADIM: Önce WorkshopEnrollments tablosundan sil
-	_, err = db.Exec("DELETE FROM WorkshopEnrollments WHERE WorkshopId = @p1", req.WorkshopID)
-	if err != nil {
-		http.Error(w, "Enrollment silme hatası: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// 4. ADIM: Sonra Workshops tablosundan sil
-	_, err = db.Exec("DELETE FROM Workshops WHERE Id = @p1", req.WorkshopID)
-	if err != nil {
-		http.Error(w, "Atölye silinemedi: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Atölye başarıyla silindi!"})
+	db.Exec("DELETE FROM WorkshopEnrollments WHERE WorkshopId = @p1", req.WorkshopID)
+	db.Exec("DELETE FROM Workshops WHERE Id = @p1", req.WorkshopID)
+	w.WriteHeader(200)
 }
 
-// ! EĞİTMENİN KENDİ ATÖLYELERİNİ GETİRME
 func getMyWorkshopsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	email := r.URL.Query().Get("email")
-	if email == "" {
-		http.Error(w, "Email parametresi gerekli", http.StatusBadRequest)
-		return
-	}
-
-	db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-
-	// Önce kullanıcının ID'sini buluyoruz
 	var userID int
-	err := db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", email).Scan(&userID)
-	if err != nil {
-		http.Error(w, "Kullanıcı bulunamadı", http.StatusNotFound)
-		return
-	}
-
-	// Bu kullanıcıya ait workshopları çekiyoruz
-	rows, err := db.Query("SELECT Id, Title, Description, Location, Capacity, Price, ImageUrl, AvailableDates FROM Workshops WHERE InstructorID = @p1", userID)
-	if err != nil {
-		http.Error(w, "Workshoplar getirilemedi: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	db.QueryRow("SELECT UserID FROM Users WHERE Email = @p1", email).Scan(&userID)
+	rows, _ := db.Query("SELECT Id, Title, Description, Location, Capacity, Price, ImageUrl, AvailableDates FROM Workshops WHERE InstructorID = @p1", userID)
 	defer rows.Close()
-
-	var workshops []MyWorkshop
+	var workshops []Workshop
 	for rows.Next() {
-		var ws MyWorkshop
-		err := rows.Scan(&ws.Id, &ws.Title, &ws.Description, &ws.Location, &ws.Capacity, &ws.Price, &ws.ImageUrl, &ws.AvailableDates)
-		if err != nil {
-			fmt.Println("Scan hatası:", err)
-			continue
-		}
+		var ws Workshop
+		rows.Scan(&ws.Id, &ws.Title, &ws.Description, &ws.Location, &ws.Capacity, &ws.Price, &ws.ImageUrl, &ws.AvailableDates)
 		workshops = append(workshops, ws)
-	}
-
-	if workshops == nil {
-		workshops = []MyWorkshop{}
 	}
 	json.NewEncoder(w).Encode(workshops)
 }
 
-
-// ! SANATÇILARI GETİRME (ADMIN İÇİN)
 func getArtistsHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set("Content-Type", "application/json")
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	rows, _ := db.Query(`SELECT a.ArtistID, a.ArtistName, a.Biography, a.Nationality, u.Email FROM Artists a JOIN Users u ON a.UserID = u.UserID`)
+	defer rows.Close()
+	var artists []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var name, bio, nationality, email string
+		rows.Scan(&id, &name, &bio, &nationality, &email)
+		artists = append(artists, map[string]interface{}{"id": id, "name": name, "biography": bio, "nationality": nationality, "email": email})
+	}
+	json.NewEncoder(w).Encode(artists)
+}
 
-    db, _ := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
-    defer db.Close()
+// --- YENİ ÖZELLİK HANDLERLARI ---
 
-    // Artists ve Users tablolarını birleştirerek isim ve biyografi bilgilerini çekiyoruz
-    query := `
-        SELECT a.ArtistID, a.ArtistName, a.Biography, a.Nationality, u.Email 
-        FROM Artists a
-        JOIN Users u ON a.UserID = u.UserID`
-    
-    rows, err := db.Query(query)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    defer rows.Close()
+func createTicketHandler(w http.ResponseWriter, r *http.Request) {
+	var t SupportTicket
+	json.NewDecoder(r.Body).Decode(&t)
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("INSERT INTO SupportTickets (UserID, Subject, Message, SupportType) VALUES (@p1, @p2, @p3, @p4)", userID, t.Subject, t.Message, t.SupportType)
+	w.WriteHeader(201)
+}
 
-    var artists []map[string]interface{}
-    for rows.Next() {
-        var id int
-        var name, bio, nationality, email string
-        rows.Scan(&id, &name, &bio, &nationality, &email)
-        
-        artists = append(artists, map[string]interface{}{
-            "id":          id,
-            "name":        name,
-            "biography":   bio,
-            "nationality": nationality,
-            "email":       email,
-        })
-    }
+func getUserTicketsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	rows, _ := db.Query("SELECT TicketID, Subject, Message, SupportType, Status, CreatedAt, UpdatedAt FROM SupportTickets WHERE UserID = @p1 ORDER BY CreatedAt DESC", userID)
+	defer rows.Close()
+	var tickets []SupportTicket
+	for rows.Next() {
+		var t SupportTicket
+		t.UserID = userID
+		rows.Scan(&t.TicketID, &t.Subject, &t.Message, &t.SupportType, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+		tickets = append(tickets, t)
+	}
+	if tickets == nil { tickets = []SupportTicket{} }
+	json.NewEncoder(w).Encode(tickets)
+}
 
-    json.NewEncoder(w).Encode(artists)
+func getAllTicketsHandler(w http.ResponseWriter, r *http.Request) {
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	rows, _ := db.Query("SELECT TicketID, UserID, Subject, Message, SupportType, Status, CreatedAt, UpdatedAt FROM SupportTickets ORDER BY CreatedAt DESC")
+	defer rows.Close()
+	var tickets []SupportTicket
+	for rows.Next() {
+		var t SupportTicket
+		rows.Scan(&t.TicketID, &t.UserID, &t.Subject, &t.Message, &t.SupportType, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+		tickets = append(tickets, t)
+	}
+	if tickets == nil { tickets = []SupportTicket{} }
+	json.NewEncoder(w).Encode(tickets)
+}
+
+func sendTicketMessageHandler(w http.ResponseWriter, r *http.Request) {
+	var msg SupportMessage
+	json.NewDecoder(r.Body).Decode(&msg)
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("INSERT INTO SupportMessages (TicketID, SenderID, Message) VALUES (@p1, @p2, @p3)", msg.TicketID, userID, msg.Message)
+	db.Exec("UPDATE SupportTickets SET UpdatedAt = GETDATE() WHERE TicketID = @p1", msg.TicketID)
+	w.WriteHeader(201)
+}
+
+func getTicketMessagesHandler(w http.ResponseWriter, r *http.Request) {
+	ticketID := r.URL.Query().Get("ticketId")
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	query := `SELECT m.MessageID, m.TicketID, m.SenderID, u.FirstName + ' ' + u.LastName, u.UserRole, m.Message, m.CreatedAt FROM SupportMessages m JOIN Users u ON m.SenderID = u.UserID WHERE m.TicketID = @p1 ORDER BY m.CreatedAt ASC`
+	rows, _ := db.Query(query, ticketID)
+	defer rows.Close()
+	var msgs []SupportMessage
+	for rows.Next() {
+		var m SupportMessage
+		rows.Scan(&m.MessageID, &m.TicketID, &m.SenderID, &m.SenderName, &m.SenderRole, &m.Message, &m.CreatedAt)
+		msgs = append(msgs, m)
+	}
+	if msgs == nil { msgs = []SupportMessage{} }
+	json.NewEncoder(w).Encode(msgs)
+}
+
+func updateTicketStatusHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TicketID int    `json:"ticketId"`
+		Status   string `json:"status"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("UPDATE SupportTickets SET Status = @p1, UpdatedAt = GETDATE() WHERE TicketID = @p2", req.Status, req.TicketID)
+	w.WriteHeader(200)
+}
+
+func addCommentHandler(w http.ResponseWriter, r *http.Request) {
+	var c Comment
+	json.NewDecoder(r.Body).Decode(&c)
+	userID := r.Context().Value(userIDKey).(int)
+	isVerified := false
+	if c.TargetType == "Artwork" {
+		isVerified = checkPurchase(userID, c.TargetID)
+	} else if c.TargetType == "Workshop" {
+		isVerified = checkEnrollment(userID, c.TargetID)
+	}
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("INSERT INTO Comments (UserID, TargetID, TargetType, CommentText, Rating, IsVerified) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)", userID, c.TargetID, c.TargetType, c.CommentText, c.Rating, isVerified)
+	w.WriteHeader(201)
+}
+
+func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
+	targetID := r.URL.Query().Get("targetId")
+	targetType := r.URL.Query().Get("targetType")
+	sortBy := r.URL.Query().Get("sort")
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	orderClause := "ORDER BY c.CreatedAt DESC"
+	if sortBy == "highest" { orderClause = "ORDER BY c.Rating DESC, c.CreatedAt DESC" } else if sortBy == "most_helpful" { orderClause = "ORDER BY c.Upvotes DESC, c.CreatedAt DESC" }
+	query := fmt.Sprintf(`SELECT c.CommentID, c.UserID, u.FirstName + ' ' + u.LastName, c.CommentText, c.Rating, c.Upvotes, c.IsVerified, c.CreatedAt, (SELECT TOP 1 cr.ReplyText FROM CommentReplies cr WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as AdminReply FROM Comments c JOIN Users u ON c.UserID = u.UserID WHERE c.TargetID = @p1 AND c.TargetType = @p2 %s`, orderClause)
+	rows, _ := db.Query(query, targetID, targetType)
+	defer rows.Close()
+	var comments []Comment
+	for rows.Next() {
+		var c Comment
+		var reply sql.NullString
+		rows.Scan(&c.CommentID, &c.UserID, &c.UserName, &c.CommentText, &c.Rating, &c.Upvotes, &c.IsVerified, &c.CreatedAt, &reply)
+		if reply.Valid { c.AdminReply = &reply.String }
+		comments = append(comments, c)
+	}
+	if comments == nil { comments = []Comment{} }
+	json.NewEncoder(w).Encode(comments)
+}
+
+func upvoteCommentHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct { CommentID int `json:"commentId"` }
+	json.NewDecoder(r.Body).Decode(&req)
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM CommentUpvotes WHERE UserID = @p1 AND CommentID = @p2", userID, req.CommentID).Scan(&count)
+	if count == 0 {
+		db.Exec("INSERT INTO CommentUpvotes (UserID, CommentID) VALUES (@p1, @p2)", userID, req.CommentID)
+		db.Exec("UPDATE Comments SET Upvotes = Upvotes + 1 WHERE CommentID = @p1", req.CommentID)
+	}
+	w.WriteHeader(200)
+}
+
+func addCommentReplyHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct { CommentID int `json:"commentId"`; ReplyText string `json:"replyText"` }
+	json.NewDecoder(r.Body).Decode(&req)
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("INSERT INTO CommentReplies (CommentID, UserID, ReplyText) VALUES (@p1, @p2, @p3)", req.CommentID, userID, req.ReplyText)
+	w.WriteHeader(201)
+}
+
+func logInteractionHandler(w http.ResponseWriter, r *http.Request) {
+	var logReq InteractionLog
+	json.NewDecoder(r.Body).Decode(&logReq)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("INSERT INTO InteractionLogs (UserID, TargetID, TargetType, InteractionType) VALUES (@p1, @p2, @p3, @p4)", logReq.UserID, logReq.TargetID, logReq.TargetType, logReq.InteractionType)
+	w.WriteHeader(200)
+}
+
+func getEntityStatsHandler(w http.ResponseWriter, r *http.Request) {
+	targetID := r.URL.Query().Get("targetId")
+	targetType := r.URL.Query().Get("targetType")
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	var viewCount, likeCount, commentCount int
+	var avgRating float64
+	db.QueryRow("SELECT COUNT(*) FROM InteractionLogs WHERE TargetID = @p1 AND TargetType = @p2 AND InteractionType = 'View'", targetID, targetType).Scan(&viewCount)
+	db.QueryRow("SELECT COUNT(*) FROM InteractionLogs WHERE TargetID = @p1 AND TargetType = @p2 AND InteractionType = 'Like'", targetID, targetType).Scan(&likeCount)
+	db.QueryRow("SELECT COUNT(*) FROM Comments WHERE TargetID = @p1 AND TargetType = @p2", targetID, targetType).Scan(&commentCount)
+	db.QueryRow("SELECT ISNULL(AVG(CAST(Rating AS FLOAT)), 0) FROM Comments WHERE TargetID = @p1 AND TargetType = @p2 AND Rating > 0", targetID, targetType).Scan(&avgRating)
+	reservations := 0
+	occupancy := 0.0
+	if targetType == "Workshop" {
+		db.QueryRow("SELECT ISNULL(SUM(ParticipantCount), 0) FROM WorkshopEnrollments WHERE WorkshopId = @p1", targetID).Scan(&reservations)
+		var capacity int
+		db.QueryRow("SELECT Capacity FROM Workshops WHERE Id = @p1", targetID).Scan(&capacity)
+		if capacity > 0 { occupancy = (float64(reservations) / float64(capacity)) * 100 }
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{ "views": viewCount, "likes": likeCount, "comments": commentCount, "avgRating": avgRating, "reservations": reservations, "occupancy": occupancy })
+}
+
+func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	var totalArtworks, totalWorkshops, totalUsers, totalTickets int
+	db.QueryRow("SELECT COUNT(*) FROM Artworks").Scan(&totalArtworks)
+	db.QueryRow("SELECT COUNT(*) FROM Workshops").Scan(&totalWorkshops)
+	db.QueryRow("SELECT COUNT(*) FROM Users").Scan(&totalUsers)
+	db.QueryRow("SELECT COUNT(*) FROM SupportTickets WHERE Status != 'Çözüldü'").Scan(&totalTickets)
+	json.NewEncoder(w).Encode(map[string]interface{}{ "totalArtworks": totalArtworks, "totalWorkshops": totalWorkshops, "totalUsers": totalUsers, "activeTickets": totalTickets })
 }
 
 func main() {
 	mux := http.NewServeMux()
+	
+	// Eski Public Endpointler
 	mux.HandleFunc("/register", registerHandler)
 	mux.HandleFunc("/login", loginHandler)
 	mux.HandleFunc("/artworks", getArtworksHandler)
+	mux.HandleFunc("/workshops", getWorkshopsHandler)
+	mux.HandleFunc("/artist", getArtistHandler)
+	mux.HandleFunc("/artists", getArtistsHandler)
+
+	// Eski Auth Gerektiren Endpointler
 	mux.HandleFunc("/profile", getUserProfileHandler)
 	mux.HandleFunc("/profile/update", updateProfileHandler)
 	mux.HandleFunc("/profile/change-password", changePasswordHandler)
-	mux.HandleFunc("/workshops", getWorkshopsHandler)
 	mux.HandleFunc("/favorites/add", addFavoriteHandler)
 	mux.HandleFunc("/favorites/remove", deleteFavoriteHandler)
 	mux.HandleFunc("/favorites/check", checkFavoriteHandler)
@@ -1216,31 +793,41 @@ func main() {
 	mux.HandleFunc("/user-purchases", getUserPurchasesHandler)
 	mux.HandleFunc("/add-artwork", addArtworkHandler)
 	mux.HandleFunc("/delete-artwork", deleteArtworkHandler)
-	mux.HandleFunc("/artist", getArtistHandler)
 	mux.HandleFunc("/add-workshop", addWorkshopHandler)
 	mux.HandleFunc("/delete-workshop", deleteWorkshopHandler)
 	mux.HandleFunc("/my-workshops", getMyWorkshopsHandler)
-	mux.HandleFunc("/artists", getArtistsHandler) 
+
+	// Yeni Özellikler (Public)
+	mux.HandleFunc("/comments", getCommentsHandler)
+	mux.HandleFunc("/log-interaction", logInteractionHandler)
+	mux.HandleFunc("/entity-stats", getEntityStatsHandler)
+
+	// Yeni Özellikler (Auth Gerektiren)
+	mux.HandleFunc("/tickets", isAuth(getUserTicketsHandler))
+	mux.HandleFunc("/tickets/create", isAuth(createTicketHandler))
+	mux.HandleFunc("/tickets/messages", isAuth(getTicketMessagesHandler))
+	mux.HandleFunc("/tickets/messages/send", isAuth(sendTicketMessageHandler))
+	mux.HandleFunc("/comments/add", isAuth(addCommentHandler))
+	mux.HandleFunc("/comments/upvote", isAuth(upvoteCommentHandler))
+
+	// Yeni Özellikler (Admin Gerektiren)
+	mux.HandleFunc("/admin/tickets", isAdmin(getAllTicketsHandler))
+	mux.HandleFunc("/admin/tickets/update", isAdmin(updateTicketStatusHandler))
+	mux.HandleFunc("/admin/comments/reply", isAdmin(addCommentReplyHandler))
+	mux.HandleFunc("/admin/dashboard-stats", isAdmin(adminDashboardStatsHandler))
 
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*") // Güvenlik için daha sonra frontend adresini yazabilirsin
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		// Eğer tarayıcı "izin var mı?" (OPTIONS) diye soruyorsa, direkt OK de ve bitir.
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-
-		// Değilse normal akışa devam et
 		mux.ServeHTTP(w, r)
 	})
 
 	fmt.Println("Server 8080 portunda çalışıyor...")
-	// ListenAndServe içine 'mux' yerine 'finalHandler' yazıyoruz!
-	err := http.ListenAndServe(":8080", finalHandler)
-	if err != nil {
-		log.Fatal(err)
-	}
+	http.ListenAndServe(":8080", finalHandler)
 }
