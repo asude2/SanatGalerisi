@@ -11,9 +11,9 @@ import WorkshopDetail from './views/WorkshopDetail.vue';
 import AddArtwork from './views/AddArtwork.vue'
 import AddWorkshop from './views/AddWorkshop.vue'
 import Artists from './views/ArtistsView.vue'
-
-
-
+import SupportView from './views/SupportView.vue'
+import SupportTicketDetail from './views/SupportTicketDetail.vue'
+import AdminDashboard from './views/AdminDashboard.vue'
 
 const routes = [
   { 
@@ -48,16 +48,16 @@ const routes = [
     component: WorkshopView 
   },
   {
-  path: '/artist/:name',
-  name: 'ArtistDetail',
-  component: ArtistDetail,
-  props: true
+    path: '/artist/:name',
+    name: 'ArtistDetail',
+    component: ArtistDetail,
+    props: true
   },
   {
-  path: '/workshops/:id',
-  name: 'WorkshopDetail',
-  component: WorkshopDetail,
-  props: true
+    path: '/workshops/:id',
+    name: 'WorkshopDetail',
+    component: WorkshopDetail,
+    props: true
   },
   {
     path: '/add-artwork',
@@ -70,9 +70,25 @@ const routes = [
     component: AddWorkshop 
   },
   {
-  path: '/artists',
-  name: 'Artists',
-  component: Artists
+    path: '/artists',
+    name: 'Artists',
+    component: Artists
+  },
+  {
+    path: '/support',
+    name: 'Support',
+    component: SupportView
+  },
+  {
+    path: '/support/:id',
+    name: 'SupportTicketDetail',
+    component: SupportTicketDetail,
+    props: true
+  },
+  {
+    path: '/admin/dashboard',
+    name: 'AdminDashboard',
+    component: AdminDashboard
   }
 ]
 
