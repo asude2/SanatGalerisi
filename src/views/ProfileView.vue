@@ -240,10 +240,13 @@
               <div v-for="artwork in myArtworks" :key="artwork.id" 
                   class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
                 
-                <div class="flex items-center space-x-4 flex-1">
-                  <img :src="artwork.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="artwork.title">
+                <div @click="router.push('/artwork/' + artwork.id)" class="flex items-center space-x-4 flex-1 cursor-pointer group">
+                  <img :src="artwork.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm group-hover:scale-105 transition-transform" :alt="artwork.title">
                   <div>
-                    <h4 class="text-lg font-bold text-gray-900">{{ artwork.title }}</h4>
+                    <div class="flex items-center gap-2">
+                      <h4 class="text-lg font-bold text-gray-900">{{ artwork.title }}</h4>
+                      <span class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">Detay & İstatistik 📊</span>
+                    </div>
                     <p class="text-gray-600 text-sm">{{ artwork.description?.substring(0, 50) }}...</p>
                     <p class="text-green-600 font-semibold mt-1">{{ artwork.price }} TL</p>
                   </div>
@@ -282,10 +285,13 @@
             <div v-for="ws in myWorkshops" :key="ws.id" 
                 class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
               
-              <div class="flex items-center space-x-4 flex-1">
-                <img :src="ws.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="ws.title">
+              <div @click="router.push('/workshops/' + ws.id)" class="flex items-center space-x-4 flex-1 cursor-pointer group">
+                <img :src="ws.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm group-hover:scale-105 transition-transform" :alt="ws.title">
                 <div>
-                  <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
+                  <div class="flex items-center gap-2">
+                    <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
+                    <span class="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">Detay & İstatistik 📊</span>
+                  </div>
                   <p class="text-gray-500 text-sm">📍 {{ ws.location }} | 📅 {{ ws.availableDates }}</p>
                   <p class="text-indigo-600 font-semibold mt-1">{{ ws.price }} TL <span class="text-gray-400 text-xs">(Kapasite: {{ ws.capacity }})</span></p>
                 </div>
@@ -391,6 +397,10 @@ onMounted(async () => {
     await fetchUserArtworks(userEmail);
     await fetchEnrollments();
     await fetchArtworkPurchases();
+    
+    if (userRole.value === 'Instructor') {
+      await fetchMyWorkshops();
+    }
   } catch (error) {
     console.error("Veriler yüklenemedi:", error);
   }
