@@ -22,6 +22,9 @@
                   Sanatçıyı Görüntüle 🔍
                 </button>
               </p>
+              
+              <!-- İstatistikler Buraya Geliyor -->
+              <EntityStats :targetId="artwork.id" targetType="Artwork" />
             </div>
 
             <div class="border-y border-gray-100 py-8">
@@ -58,6 +61,12 @@
           </div>
         </div>
       </div>
+
+      <!-- Yorumlar Bölümü -->
+      <div class="p-12 border-t border-gray-100 bg-gray-50/50">
+        <CommentSection :targetId="artwork.id" targetType="Artwork" />
+      </div>
+
     </div>
 
     <!-- Yükleniyor Durumu -->
@@ -112,6 +121,8 @@ import { ref, onMounted, watch } from 'vue';
 import { jwtDecode } from 'jwt-decode';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
+import EntityStats from '../components/EntityStats.vue';
+import CommentSection from '../components/CommentSection.vue';
 
 const route = useRoute();
 const router = useRouter();
