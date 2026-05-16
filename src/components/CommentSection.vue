@@ -78,15 +78,26 @@
         <p class="text-gray-700 mt-3">{{ comment.commentText }}</p>
         
         <div class="mt-4 flex items-center gap-4">
-          <button 
-            @click="upvoteComment(comment.commentId)" 
-            class="text-sm flex items-center gap-1 text-gray-500 hover:text-blue-600 transition-colors"
-          >
-            👍 Faydalı ({{ comment.upvotes }})
-          </button>
+          <div class="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-100">
+            <button 
+              @click="voteComment(comment.commentId, 'Up')" 
+              class="text-xs flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-blue-600 hover:bg-white rounded-md transition-all"
+              title="Faydalı"
+            >
+              👍 {{ comment.upvotes }}
+            </button>
+            <div class="w-px h-4 bg-gray-200 mx-1"></div>
+            <button 
+              @click="voteComment(comment.commentId, 'Down')" 
+              class="text-xs flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-red-600 hover:bg-white rounded-md transition-all"
+              title="Faydalı Değil"
+            >
+              👎 {{ comment.downvotes }}
+            </button>
+          </div>
           
           <button 
-            v-if="(userRole === 'Admin' || userRole === 'Instructor') && !comment.adminReply" 
+            v-if="isLoggedIn && !comment.adminReply" 
             @click="replyingTo = comment.commentId"
             class="text-sm text-galeri-yesil font-medium hover:underline"
           >
@@ -94,16 +105,19 @@
           </button>
         </div>
 
-        <!-- Admin Yanıtı -->
-        <div v-if="comment.adminReply" class="mt-4 ml-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
+        <!-- Yanıt -->
+        <div v-if="comment.adminReply" class="mt-4 ml-8 p-4 rounded-xl border" :class="comment.replierRole === 'User' ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-100'">
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xl">🛡️</span>
-            <span class="font-bold text-blue-800">Yönetici Yanıtı</span>
+            <span class="text-xl" v-if="comment.replierRole !== 'User'">🛡️</span>
+            <span class="text-xl" v-else>👤</span>
+            <span class="font-bold" :class="comment.replierRole === 'User' ? 'text-gray-800' : 'text-blue-800'">
+              {{ comment.replierName || 'Yönetici' }} {{ comment.replierRole === 'User' ? '(Doğrulanmış Alıcı)' : '(Yönetici)' }}
+            </span>
           </div>
-          <p class="text-blue-900">{{ comment.adminReply }}</p>
+          <p :class="comment.replierRole === 'User' ? 'text-gray-700' : 'text-blue-900'">{{ comment.adminReply }}</p>
         </div>
 
-        <!-- Admin Yanıt Formu -->
+        <!-- Yanıt Formu -->
         <div v-if="replyingTo === comment.commentId" class="mt-4 ml-8">
           <textarea 
             v-model="replyText" 
@@ -171,11 +185,11 @@ const submitComment = async () => {
   }
 }
 
-const upvoteComment = async (commentId) => {
-  if (!isLoggedIn.value) return alert("Beğenmek için giriş yapmalısınız.")
+const voteComment = async (commentId, voteType) => {
+  if (!isLoggedIn.value) return alert("Oy vermek için giriş yapmalısınız.")
   try {
     const token = localStorage.getItem('userToken')
-    await axios.post('http://localhost:8080/comments/upvote', { commentId }, {
+    await axios.post('http://localhost:8080/comments/vote', { commentId, voteType }, {
       headers: { Authorization: `Bearer ${token}` }
     })
     fetchComments()
@@ -187,14 +201,14 @@ const upvoteComment = async (commentId) => {
 const submitReply = async (commentId) => {
   try {
     const token = localStorage.getItem('userToken')
-    await axios.post('http://localhost:8080/admin/comments/reply', { commentId, replyText: replyText.value }, {
+    await axios.post('http://localhost:8080/comments/reply', { commentId, replyText: replyText.value }, {
       headers: { Authorization: `Bearer ${token}` }
     })
     replyText.value = ''
     replyingTo.value = null
     fetchComments()
   } catch (error) {
-    alert("Yanıt gönderilemedi.")
+    alert(error.response?.data || "Yanıt gönderilemedi.")
   }
 }
 
