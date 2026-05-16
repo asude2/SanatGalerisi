@@ -13,6 +13,7 @@
           <div>
             <h1 class="text-4xl font-black text-gray-900">{{ workshop.title }}</h1>
             <p class="text-blue-600 font-bold text-lg mt-2 italic">Eğitmen: {{ workshop.instructorName }}</p>
+            <EntityStats :targetId="workshop.id" targetType="Workshop" />
           </div>
           <div class="bg-blue-50 text-blue-700 px-6 py-3 rounded-2xl font-black text-2xl">
             {{ workshop.price > 0 ? workshop.price + ' ₺' : 'Ücretsiz' }}
@@ -78,10 +79,13 @@
 
         <button 
           @click="enroll"
-          class="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 cursor-pointer active:scale-[0.98]"
+          class="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 cursor-pointer active:scale-[0.98] mb-12"
         >
           Rezervasyon Oluştur ✨
         </button>
+
+        <!-- Yorumlar Bölümü -->
+        <CommentSection :targetId="workshop.id" targetType="Workshop" />
       </div>
     </div>
   </div>
@@ -91,19 +95,19 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import { jwtDecode } from 'jwt-decode' // Token'dan email almak için gerekli
+import { jwtDecode } from 'jwt-decode'
+import EntityStats from '../components/EntityStats.vue'
+import CommentSection from '../components/CommentSection.vue'
 
 const route = useRoute()
 const router = useRouter()
 const workshop = ref(null)
 
-// Madde 4 Veri Modeli
 const reservation = ref({
   participantCount: 1,
   date: ''
 })
 
-// Geçmiş tarihlere rezervasyon yapılmasın
 const today = computed(() => new Date().toISOString().split('T')[0])
 
 onMounted(async () => {
@@ -116,7 +120,6 @@ onMounted(async () => {
   }
 })
 
-// Rezervasyon Yapma Fonksiyonu
 const enroll = async () => {
   const token = localStorage.getItem('userToken')
   if (!token) {
@@ -139,7 +142,7 @@ const enroll = async () => {
     })
 
     alert(response.data.message)
-    router.push('/workshops') // Başarılıysa listeye dön
+    router.push('/workshops')
   } catch (error) {
     alert(error.response?.data || "Rezervasyon sırasında bir hata oluştu.")
   }
