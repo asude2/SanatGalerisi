@@ -93,9 +93,12 @@ type Comment struct {
 	CommentText string    `json:"commentText"`
 	Rating      int       `json:"rating"`
 	Upvotes     int       `json:"upvotes"`
+	Downvotes   int       `json:"downvotes"`
 	IsVerified  bool      `json:"isVerified"`
 	CreatedAt   time.Time `json:"createdAt"`
 	AdminReply  *string   `json:"adminReply"`
+	ReplierName *string   `json:"replierName"`
+	ReplierRole *string   `json:"replierRole"`
 }
 
 type InteractionLog struct {
@@ -680,36 +683,105 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 	targetID := r.URL.Query().Get("targetId")
 	targetType := r.URL.Query().Get("targetType")
 	sortBy := r.URL.Query().Get("sort")
-	db, _ := sql.Open("sqlserver", connString)
+
+	db, err := sql.Open("sqlserver", connString)
+	if err != nil {
+		fmt.Println("DB Bağlantı Hatası:", err)
+		json.NewEncoder(w).Encode([]Comment{})
+		return
+	}
 	defer db.Close()
+
 	orderClause := "ORDER BY c.CreatedAt DESC"
-	if sortBy == "highest" { orderClause = "ORDER BY c.Rating DESC, c.CreatedAt DESC" } else if sortBy == "most_helpful" { orderClause = "ORDER BY c.Upvotes DESC, c.CreatedAt DESC" }
-	query := fmt.Sprintf(`SELECT c.CommentID, c.UserID, u.FirstName + ' ' + u.LastName, c.CommentText, c.Rating, c.Upvotes, c.IsVerified, c.CreatedAt, (SELECT TOP 1 cr.ReplyText FROM CommentReplies cr WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as AdminReply FROM Comments c JOIN Users u ON c.UserID = u.UserID WHERE c.TargetID = @p1 AND c.TargetType = @p2 %s`, orderClause)
-	rows, _ := db.Query(query, targetID, targetType)
+	if sortBy == "highest" {
+		orderClause = "ORDER BY c.Rating DESC, c.CreatedAt DESC"
+	} else if sortBy == "most_helpful" {
+		orderClause = "ORDER BY (c.Upvotes - ISNULL(c.Downvotes, 0)) DESC, c.CreatedAt DESC"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			c.CommentID, c.UserID, u.FirstName + ' ' + u.LastName, c.CommentText, c.Rating, 
+			c.Upvotes, ISNULL(c.Downvotes, 0), c.IsVerified, c.CreatedAt, 
+			(SELECT TOP 1 cr.ReplyText FROM CommentReplies cr WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as AdminReply,
+			(SELECT TOP 1 ru.FirstName + ' ' + ru.LastName FROM CommentReplies cr JOIN Users ru ON cr.UserID = ru.UserID WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as ReplierName,
+			(SELECT TOP 1 ru.UserRole FROM CommentReplies cr JOIN Users ru ON cr.UserID = ru.UserID WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as ReplierRole
+		FROM Comments c 
+		JOIN Users u ON c.UserID = u.UserID 
+		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %s`, orderClause)
+
+	rows, err := db.Query(query, targetID, targetType)
+	if err != nil {
+		fmt.Println("Yorum Getirme Sorgu Hatası:", err)
+		json.NewEncoder(w).Encode([]Comment{})
+		return
+	}
+	if rows == nil {
+		json.NewEncoder(w).Encode([]Comment{})
+		return
+	}
 	defer rows.Close()
-	var comments []Comment
+
+	comments := []Comment{}
 	for rows.Next() {
 		var c Comment
-		var reply sql.NullString
-		rows.Scan(&c.CommentID, &c.UserID, &c.UserName, &c.CommentText, &c.Rating, &c.Upvotes, &c.IsVerified, &c.CreatedAt, &reply)
-		if reply.Valid { c.AdminReply = &reply.String }
+		var reply, replierName, replierRole sql.NullString
+		err := rows.Scan(
+			&c.CommentID, &c.UserID, &c.UserName, &c.CommentText, &c.Rating, 
+			&c.Upvotes, &c.Downvotes, &c.IsVerified, &c.CreatedAt, 
+			&reply, &replierName, &replierRole,
+		)
+		if err != nil {
+			fmt.Println("Yorum Scan Hatası:", err)
+			continue
+		}
+		if reply.Valid {
+			c.AdminReply = &reply.String
+		}
+		if replierName.Valid {
+			c.ReplierName = &replierName.String
+		}
+		if replierRole.Valid {
+			c.ReplierRole = &replierRole.String
+		}
 		comments = append(comments, c)
 	}
-	if comments == nil { comments = []Comment{} }
+	
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(comments)
 }
 
-func upvoteCommentHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct { CommentID int `json:"commentId"` }
+func voteCommentHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CommentID int    `json:"commentId"`
+		VoteType  string `json:"voteType"` // 'Up' veya 'Down'
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	userID := r.Context().Value(userIDKey).(int)
+
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM CommentUpvotes WHERE UserID = @p1 AND CommentID = @p2", userID, req.CommentID).Scan(&count)
-	if count == 0 {
-		db.Exec("INSERT INTO CommentUpvotes (UserID, CommentID) VALUES (@p1, @p2)", userID, req.CommentID)
-		db.Exec("UPDATE Comments SET Upvotes = Upvotes + 1 WHERE CommentID = @p1", req.CommentID)
+
+	// Mevcut oyu kontrol et
+	var existingVote string
+	err := db.QueryRow("SELECT VoteType FROM CommentVotes WHERE UserID = @p1 AND CommentID = @p2", userID, req.CommentID).Scan(&existingVote)
+
+	if err == sql.ErrNoRows {
+		// Yeni oy
+		db.Exec("INSERT INTO CommentVotes (UserID, CommentID, VoteType) VALUES (@p1, @p2, @p3)", userID, req.CommentID, req.VoteType)
+		if req.VoteType == "Up" {
+			db.Exec("UPDATE Comments SET Upvotes = Upvotes + 1 WHERE CommentID = @p1", req.CommentID)
+		} else {
+			db.Exec("UPDATE Comments SET Downvotes = Downvotes + 1 WHERE CommentID = @p1", req.CommentID)
+		}
+	} else if existingVote != req.VoteType {
+		// Oyu değiştir
+		db.Exec("UPDATE CommentVotes SET VoteType = @p1 WHERE UserID = @p2 AND CommentID = @p3", req.VoteType, userID, req.CommentID)
+		if req.VoteType == "Up" {
+			db.Exec("UPDATE Comments SET Upvotes = Upvotes + 1, Downvotes = Downvotes - 1 WHERE CommentID = @p1", req.CommentID)
+		} else {
+			db.Exec("UPDATE Comments SET Downvotes = Downvotes + 1, Upvotes = Upvotes - 1 WHERE CommentID = @p1", req.CommentID)
+		}
 	}
 	w.WriteHeader(200)
 }
@@ -718,8 +790,35 @@ func addCommentReplyHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct { CommentID int `json:"commentId"`; ReplyText string `json:"replyText"` }
 	json.NewDecoder(r.Body).Decode(&req)
 	userID := r.Context().Value(userIDKey).(int)
+	role := r.Context().Value(userRoleKey).(string)
+
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
+
+	var targetID int
+	var targetType string
+	err := db.QueryRow("SELECT TargetID, TargetType FROM Comments WHERE CommentID = @p1", req.CommentID).Scan(&targetID, &targetType)
+	if err != nil {
+		http.Error(w, "Yorum bulunamadı", 404)
+		return
+	}
+
+	isAuthorized := false
+	if role == "Admin" || role == "Instructor" {
+		isAuthorized = true
+	} else {
+		if targetType == "Artwork" {
+			isAuthorized = checkPurchase(userID, targetID)
+		} else if targetType == "Workshop" {
+			isAuthorized = checkEnrollment(userID, targetID)
+		}
+	}
+
+	if !isAuthorized {
+		http.Error(w, "Yalnızca ürünü satın alanlar veya yöneticiler yanıt verebilir.", 403)
+		return
+	}
+
 	db.Exec("INSERT INTO CommentReplies (CommentID, UserID, ReplyText) VALUES (@p1, @p2, @p3)", req.CommentID, userID, req.ReplyText)
 	w.WriteHeader(201)
 }
@@ -808,12 +907,12 @@ func main() {
 	mux.HandleFunc("/tickets/messages", isAuth(getTicketMessagesHandler))
 	mux.HandleFunc("/tickets/messages/send", isAuth(sendTicketMessageHandler))
 	mux.HandleFunc("/comments/add", isAuth(addCommentHandler))
-	mux.HandleFunc("/comments/upvote", isAuth(upvoteCommentHandler))
+	mux.HandleFunc("/comments/vote", isAuth(voteCommentHandler))
+	mux.HandleFunc("/comments/reply", isAuth(addCommentReplyHandler)) // <-- Güncellendi
 
 	// Yeni Özellikler (Admin Gerektiren)
 	mux.HandleFunc("/admin/tickets", isAdmin(getAllTicketsHandler))
 	mux.HandleFunc("/admin/tickets/update", isAdmin(updateTicketStatusHandler))
-	mux.HandleFunc("/admin/comments/reply", isAdmin(addCommentReplyHandler))
 	mux.HandleFunc("/admin/dashboard-stats", isAdmin(adminDashboardStatsHandler))
 
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
