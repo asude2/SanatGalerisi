@@ -12,7 +12,7 @@
             <span @click="router.push('/workshops')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity">Atölyeler</span>
             <span @click="router.push('/artists')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity">Sanatçılar</span>
             <span @click="router.push('/support')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity">Destek</span>
-            <span v-if="userRole === 'Instructor' || userRole === 'Admin'" @click="router.push('/admin/dashboard')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity text-yellow-300">Yönetici</span>
+            <span v-if="userRole === 'Admin'" @click="router.push('/admin/dashboard')" class="cursor-pointer opacity-70 hover:opacity-100 transition-opacity text-yellow-300">Yönetici</span>
           </nav>
           <div class="bg-white text-galeri-yesil p-3 rounded-2xl shadow-inner cursor-pointer hover:scale-105 transition-transform">
             <router-link to="/profile">
