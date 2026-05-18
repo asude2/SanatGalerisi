@@ -117,38 +117,22 @@ INSERT INTO Coupons (Code, DiscountAmount, IsActive) VALUES ('SANAT100', 100.00,
 
 ALTER TABLE Artworks ADD IsCampaign BIT DEFAULT 0;
 ALTER TABLE Artworks ADD DiscountRate INT DEFAULT 0;
+-- Artworks tablosuna 'Satıldı' bilgisini tutacak kolonu ekliyoruz
+ALTER TABLE Artworks ADD IsSold BIT DEFAULT 0;
 
--- SELECT a.Title, r.ArtistName, a.Category, a.Price 
--- FROM Artworks a 
--- JOIN Artists r ON a.ArtistID = r.ArtistID;
+ALTER TABLE Users ADD LastPurchasedCategory NVARCHAR(100) NULL;
+ALTER TABLE Users ADD LastPurchasedCategory NVARCHAR(100) NULL;
 
+-- 1. Tüm eserleri 'Satılmadı' (0) yapıyoruz (NULL olanlar dahil)
+UPDATE Artworks SET IsSold = 0;
 
--- 1. Eserin kime ait olduğunu bilmemiz lazım (Satıcı)
-IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Artworks]') AND name = 'OwnerID')
-BEGIN
-    ALTER TABLE Artworks ADD OwnerID INT FOREIGN KEY REFERENCES Users(Id);
-END
-GO
+-- 2. Bundan sonra eklenen her yeni eserin otomatik 0 olması için kural koyalım
+-- (Eğer bu kural varsa hata verebilir, vermezse mükemmel olur)
+ALTER TABLE Artworks ADD CONSTRAINT DF_IsSold DEFAULT 0 FOR IsSold;
+UPDATE Artworks SET IsSold = 0 WHERE IsSold IS NULL;
+-- Users tablosuna öneri sisteminin hafızası olan kolonu ekliyoruz
+ALTER TABLE Users ADD LastPurchasedCategory NVARCHAR(100) NULL;
 
--- 2. Mevcut eserleri test için Asude'ye (diyelim ki ID'si 2) atayalım
-UPDATE Artworks SET OwnerID = 2; 
-GO
-
-
-
--- Hata veren kısmı düzeltiyoruz: Referans sütun adı 'UserID' olmalı
-IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Artworks]') AND name = 'OwnerID')
-BEGIN
-    ALTER TABLE Artworks ADD OwnerID INT;
-    -- Foreign Key'i UserID üzerinden bağlıyoruz
-    ALTER TABLE Artworks ADD CONSTRAINT FK_Artworks_Owner FOREIGN KEY (OwnerID) REFERENCES Users(UserID);
-END
-GO
-
-
--- Test verisi (Asude'ye atama)
-UPDATE Artworks SET OwnerID = 2; 
-GO
 
 -- ArtworkPurchases Tablosuna SellerID: Bir satış gerçekleştiğinde, o satışın hangi satıcıya ait olduğunu doğrudan bu tabloda tutmak sorguları çok hızlandırır.
 ALTER TABLE ArtworkPurchases ADD SellerID INT;
@@ -157,20 +141,47 @@ ADD CONSTRAINT FK_Purchase_Seller FOREIGN KEY (SellerID) REFERENCES Users(UserID
 GO
 
 
+-- 1. Tüm eserleri satılmamış yap
+UPDATE [SanatProjesi].[dbo].[Artworks] SET IsSold = 0;
 
-USE SanatProjesi;
+-- 2. Eğer varsa hatalı kayıtları sil
+DELETE FROM [SanatProjesi].[dbo].[ArtworkPurchases];
+
+-- 3. Kullanıcıların öneri hafızasını sıfırla
+UPDATE [SanatProjesi].[dbo].[Users] SET LastPurchasedCategory = NULL;
+
+
+USE [SanatProjesi];
+UPDATE Artworks SET IsSold = 1 WHERE Title LIKE '%Atlı%';
+
+
+USE [SanatProjesi];
+-- Eğer kolon yoksa ekle
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Users') AND name = 'LastPurchasedCategory')
+BEGIN
+    ALTER TABLE Users ADD LastPurchasedCategory NVARCHAR(100) NULL;
+END
+
+
+
+
+
+--satın alınanları sıfırlama
+USE [SanatProjesi];
 GO
 
--- 1. Eserlerin bir sahibi olduğundan emin olalım (Test için hepsini Asude'ye -ID:2- atıyoruz)
--- Eğer senin Users tablanda Asude'nin ID'si farklıysa 2 yerine onu yaz kanka
-UPDATE Artworks SET OwnerID = 2 WHERE OwnerID IS NULL OR OwnerID NOT IN (SELECT UserID FROM Users);
+-- 1. Tüm eserleri 'Satılmadı' (0) olarak işaretle
+UPDATE [dbo].[Artworks] 
+SET IsSold = 0;
+
+-- 2. (Opsiyonel) Test sırasında oluşan sipariş kayıtlarını da temizleyelim ki kafa karışmasın
+-- Eğer sipariş geçmişini silmek istemiyorsan bu satırı çalıştırma
+DELETE FROM [dbo].[ArtworkPurchases];
+
+-- 3. Kullanıcıların 'Son alınan kategori' bilgisini temizle (Öneri bandını test etmek için)
+UPDATE [dbo].[Users] 
+SET LastPurchasedCategory = NULL;
+
 GO
 
--- 2. Eğer tabloda eski, hatalı kayıtlar kaldıysa onları temizleyelim ki çakışma yapmasın
-DELETE FROM ArtworkPurchases WHERE SellerID NOT IN (SELECT UserID FROM Users);
-GO
-
-UPDATE Artworks SET OwnerID = 2 WHERE OwnerID IS NULL;
-
--- Kolon tiplerini görmek için:
-EXEC sp_help 'Artworks';
+--
