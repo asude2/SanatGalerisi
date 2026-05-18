@@ -1,10 +1,14 @@
 <template>
-  <div class="mt-12 bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-    <div class="flex justify-between items-center mb-8">
-      <h3 class="text-2xl font-bold text-gray-800">Yorumlar & Değerlendirmeler</h3>
+  <div class="mt-12 space-y-8">
+    <div class="flex items-center justify-between border-b border-gray-100 pb-6">
+      <h2 class="text-3xl font-black text-gray-900 flex items-center gap-3">
+        💬 Değerlendirmeler <span class="text-blue-600 text-lg bg-blue-50 px-3 py-1 rounded-full">{{ comments.length }}</span>
+      </h2>
       
-      <div class="flex gap-4">
-        <select v-model="sortBy" @change="fetchComments" class="p-2 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-galeri-yesil">
+      <!-- Filtreleme -->
+      <div class="flex items-center gap-4">
+        <label class="text-sm font-bold text-gray-400 uppercase tracking-tighter">Sırala:</label>
+        <select v-model="sortBy" @change="fetchComments" class="bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
           <option value="newest">En Yeni</option>
           <option value="highest">En Yüksek Puan</option>
           <option value="most_helpful">En Faydalı</option>
@@ -12,209 +16,279 @@
       </div>
     </div>
 
-    <!-- Yorum Ekleme Formu -->
-    <div v-if="isLoggedIn" class="mb-10 bg-gray-50 p-6 rounded-2xl">
-      <h4 class="font-bold text-gray-700 mb-4">Değerlendirme Yazın</h4>
-      <div class="flex items-center gap-2 mb-4">
-        <span class="text-gray-600 font-medium">Puanınız:</span>
-        <div class="flex gap-1">
-          <button 
-            v-for="star in 5" :key="star" 
-            @click="newComment.rating = star"
-            class="text-2xl hover:scale-110 transition-transform cursor-pointer"
-            :class="star <= newComment.rating ? 'text-yellow-400' : 'text-gray-300'"
-          >
-            ★
-          </button>
+    <!-- Ortalama Puan Özeti -->
+    <div v-if="comments.length > 0" class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col md:flex-row items-center gap-8">
+      <div class="text-center md:border-r md:pr-12 border-gray-100">
+        <p class="text-6xl font-black text-gray-900">{{ averageRating }}</p>
+        <div class="flex gap-1 justify-center my-2">
+          <span v-for="i in 5" :key="i" :class="i <= Math.round(averageRating) ? 'text-yellow-400' : 'text-gray-200'" class="text-2xl">★</span>
+        </div>
+        <p class="text-gray-400 text-sm font-bold uppercase tracking-widest">Genel Puan</p>
+      </div>
+      <div class="flex-1 w-full space-y-3">
+        <div v-for="star in [5, 4, 3, 2, 1]" :key="star" class="flex items-center gap-4">
+          <span class="text-sm font-bold text-gray-500 w-4">{{ star }}</span>
+          <div class="flex-1 bg-gray-100 h-3 rounded-full overflow-hidden">
+            <div 
+              class="bg-yellow-400 h-full rounded-full transition-all duration-1000" 
+              :style="{ width: `${getStarPercentage(star)}%` }"
+            ></div>
+          </div>
+          <span class="text-sm font-bold text-gray-400 w-10 text-right">{{ getStarCount(star) }}</span>
         </div>
       </div>
-      <textarea 
-        v-model="newComment.commentText" 
-        rows="3" 
-        class="w-full p-4 rounded-xl border border-gray-200 focus:border-galeri-yesil outline-none mb-4"
-        placeholder="Deneyiminizi paylaşın..."
-      ></textarea>
-      <button 
-        @click="submitComment" 
-        class="bg-galeri-yesil text-white px-6 py-2 rounded-xl font-bold hover:bg-green-700 transition-colors"
-        :disabled="!newComment.commentText || newComment.rating === 0"
-      >
-        Gönder
-      </button>
-      <p v-if="errorMessage" class="text-red-500 mt-2">{{ errorMessage }}</p>
     </div>
-    <div v-else class="mb-10 p-6 bg-yellow-50 rounded-2xl border border-yellow-100 text-yellow-800 flex items-center justify-between">
-      <span>Yorum yapabilmek için giriş yapmalısınız.</span>
-      <router-link to="/login" class="bg-yellow-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-yellow-600">Giriş Yap</router-link>
+
+    <!-- Yorum Yapma Formu -->
+    <div class="bg-blue-50/50 p-8 rounded-3xl border-2 border-dashed border-blue-100">
+      <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+        ✨ Senin Deneyimin Nasıl?
+      </h3>
+      
+      <div class="space-y-6">
+        <div>
+          <p class="text-sm font-bold text-gray-500 mb-3 ml-1 uppercase">Puanın</p>
+          <div class="flex gap-3">
+            <button 
+              v-for="i in 5" 
+              :key="i" 
+              @click="newComment.rating = i"
+              class="text-4xl transition-all hover:scale-125 cursor-pointer"
+              :class="i <= newComment.rating ? 'grayscale-0' : 'grayscale opacity-30'"
+            >
+              {{ i === 1 ? '😡' : i === 2 ? '🙁' : i === 3 ? '😐' : i === 4 ? '😊' : '🤩' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="relative">
+          <textarea 
+            v-model="newComment.text"
+            placeholder="Görüşlerini buraya yazabilirsin..."
+            class="w-full p-6 bg-white rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all shadow-sm min-h-[150px] text-lg"
+          ></textarea>
+        </div>
+
+        <button 
+          @click="submitComment"
+          :disabled="!newComment.rating || !newComment.text"
+          class="w-full md:w-auto px-10 py-4 bg-blue-600 text-white rounded-2xl font-bold text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100"
+        >
+          Yorumu Paylaş 🚀
+        </button>
+      </div>
     </div>
 
     <!-- Yorum Listesi -->
     <div class="space-y-6">
-      <div v-if="comments.length === 0" class="text-center text-gray-400 py-8">
-        Henüz yorum yapılmamış. İlk yorumu siz yapın!
+      <div v-if="comments.length === 0" class="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dotted border-gray-200">
+        <p class="text-6xl mb-4">🙊</p>
+        <p class="text-xl font-bold text-gray-400">Henüz hiç yorum yapılmamış.</p>
+        <p class="text-gray-400 mt-2">İlk yorumu sen yaparak diğerlerine rehberlik et!</p>
       </div>
-      
-      <div v-for="comment in comments" :key="comment.commentId" class="border border-gray-100 p-6 rounded-2xl">
-        <div class="flex justify-between items-start mb-2">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center font-bold text-gray-500">
-              {{ comment.userName.charAt(0) }}
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-gray-800">{{ comment.userName }}</span>
-                <span v-if="comment.isVerified" class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">
-                  ✓ Doğrulanmış {{ targetType === 'Artwork' ? 'Alıcı' : 'Katılımcı' }}
-                </span>
+
+      <div 
+        v-for="comment in comments" 
+        :key="comment.commentId" 
+        class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all group"
+      >
+        <div class="flex flex-col md:flex-row justify-between gap-6">
+          <div class="flex-1 space-y-4">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                {{ comment.userName.charAt(0) }}
               </div>
-              <div class="text-yellow-400 text-sm">
-                {{ '★'.repeat(comment.rating) }}{{ '☆'.repeat(5 - comment.rating) }}
+              <div>
+                <div class="flex items-center gap-2">
+                  <p class="font-black text-gray-900">{{ comment.userName }}</p>
+                  <span v-if="comment.isVerified" class="bg-green-100 text-green-700 text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                    ✓ Doğrulanmış {{ targetType === 'Artwork' ? 'Alıcı' : 'Katılımcı' }}
+                  </span>
+                </div>
+                <div class="flex gap-0.5 mt-0.5">
+                  <span v-for="i in 5" :key="i" :class="i <= comment.rating ? 'text-yellow-400' : 'text-gray-200'" class="text-xs">★</span>
+                  <span class="text-xs text-gray-400 ml-2 font-medium">{{ formatDate(comment.createdAt) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <p class="text-gray-700 leading-relaxed text-lg">{{ comment.commentText }}</p>
+
+            <!-- Admin Yanıtı -->
+            <div v-if="comment.adminReply" class="bg-gray-50 p-6 rounded-2xl border-l-4 border-blue-500 mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-sm font-black text-blue-600 uppercase tracking-tighter">
+                  {{ comment.replierRole === 'Admin' ? 'Galeri Yönetimi' : comment.replierRole === 'Instructor' ? 'Eğitmen' : 'Doğrulanmış Yanıt' }}
+                </span>
+                <span class="text-xs text-gray-400 font-bold">• {{ comment.replierName }}</span>
+              </div>
+              <p class="text-gray-600 italic">"{{ comment.adminReply }}"</p>
+            </div>
+
+            <!-- Admin Yanıt Verme Formu (Sadece Admin/Instructor için) -->
+            <div v-if="(userRole === 'Admin' || userRole === 'Instructor') && !comment.adminReply" class="mt-4">
+              <button 
+                v-if="!replyingTo[comment.commentId]" 
+                @click="replyingTo[comment.commentId] = true"
+                class="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                ↩ Yanıtla
+              </button>
+              <div v-else class="space-y-3">
+                <textarea 
+                  v-model="replies[comment.commentId]"
+                  placeholder="Yanıtınızı yazın..."
+                  class="w-full p-4 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-blue-500 transition-all text-sm"
+                ></textarea>
+                <div class="flex gap-2">
+                  <button @click="submitReply(comment.commentId)" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold">Gönder</button>
+                  <button @click="replyingTo[comment.commentId] = false" class="bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-xs font-bold">İptal</button>
+                </div>
               </div>
             </div>
           </div>
-          <span class="text-gray-400 text-sm">{{ new Date(comment.createdAt).toLocaleDateString() }}</span>
-        </div>
-        
-        <p class="text-gray-700 mt-3">{{ comment.commentText }}</p>
-        
-        <div class="mt-4 flex items-center gap-4">
-          <div class="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-100">
+
+          <!-- Oy Verme -->
+          <div class="flex md:flex-col items-center gap-3 bg-gray-50/50 p-4 rounded-2xl h-fit">
             <button 
-              @click="voteComment(comment.commentId, 'Up')" 
-              class="text-xs flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-blue-600 hover:bg-white rounded-md transition-all"
+              @click="vote(comment.commentId, 'Up')"
+              class="p-2 hover:bg-white rounded-xl transition-all hover:scale-110 active:scale-90"
               title="Faydalı"
             >
-              👍 {{ comment.upvotes }}
+              👍 <span class="text-xs font-bold text-gray-500">{{ comment.upvotes }}</span>
             </button>
-            <div class="w-px h-4 bg-gray-200 mx-1"></div>
+            <div class="w-px h-4 md:w-4 md:h-px bg-gray-200"></div>
             <button 
-              @click="voteComment(comment.commentId, 'Down')" 
-              class="text-xs flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-red-600 hover:bg-white rounded-md transition-all"
-              title="Faydalı Değil"
+              @click="vote(comment.commentId, 'Down')"
+              class="p-2 hover:bg-white rounded-xl transition-all hover:scale-110 active:scale-90"
+              title="Faydalı değil"
             >
-              👎 {{ comment.downvotes }}
+              👎 <span class="text-xs font-bold text-gray-500">{{ comment.downvotes }}</span>
             </button>
           </div>
-          
-          <button 
-            v-if="isLoggedIn && !comment.adminReply" 
-            @click="replyingTo = comment.commentId"
-            class="text-sm text-galeri-yesil font-medium hover:underline"
-          >
-            Yanıtla
-          </button>
         </div>
-
-        <!-- Yanıt -->
-        <div v-if="comment.adminReply" class="mt-4 ml-8 p-4 rounded-xl border" :class="comment.replierRole === 'User' ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-100'">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-xl" v-if="comment.replierRole !== 'User'">🛡️</span>
-            <span class="text-xl" v-else>👤</span>
-            <span class="font-bold" :class="comment.replierRole === 'User' ? 'text-gray-800' : 'text-blue-800'">
-              {{ comment.replierName || 'Yönetici' }} {{ comment.replierRole === 'User' ? '(Doğrulanmış Alıcı)' : '(Yönetici)' }}
-            </span>
-          </div>
-          <p :class="comment.replierRole === 'User' ? 'text-gray-700' : 'text-blue-900'">{{ comment.adminReply }}</p>
-        </div>
-
-        <!-- Yanıt Formu -->
-        <div v-if="replyingTo === comment.commentId" class="mt-4 ml-8">
-          <textarea 
-            v-model="replyText" 
-            rows="2" 
-            class="w-full p-3 rounded-xl border border-gray-200 focus:border-blue-400 outline-none mb-2"
-            placeholder="Yanıtınız..."
-          ></textarea>
-          <div class="flex gap-2">
-            <button @click="submitReply(comment.commentId)" class="bg-blue-600 text-white px-4 py-1 rounded-lg font-bold text-sm hover:bg-blue-700">Gönder</button>
-            <button @click="replyingTo = null" class="bg-gray-200 text-gray-700 px-4 py-1 rounded-lg font-bold text-sm hover:bg-gray-300">İptal</button>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { ref, onMounted, computed } from 'vue';
+import axios from 'axios';
+import { jwtDecode } from 'jwt-decode';
 
 const props = defineProps({
   targetId: { type: Number, required: true },
   targetType: { type: String, required: true } // 'Artwork' veya 'Workshop'
-})
+});
 
-const comments = ref([])
-const sortBy = ref('newest')
-const isLoggedIn = ref(false)
-const userRole = ref('')
-const errorMessage = ref('')
+const comments = ref([]);
+const sortBy = ref('newest');
+const userRole = ref('');
+const replyingTo = ref({});
+const replies = ref({});
 
 const newComment = ref({
-  targetId: props.targetId,
-  targetType: props.targetType,
-  commentText: '',
-  rating: 0
-})
+  rating: 0,
+  text: ''
+});
 
-const replyingTo = ref(null)
-const replyText = ref('')
+const averageRating = computed(() => {
+  if (comments.value.length === 0) return 0;
+  const sum = comments.value.reduce((acc, curr) => acc + curr.rating, 0);
+  return (sum / comments.value.length).toFixed(1);
+});
 
 const fetchComments = async () => {
   try {
-    const res = await axios.get(`http://localhost:8080/comments?targetId=${props.targetId}&targetType=${props.targetType}&sort=${sortBy.value}`)
-    comments.value = res.data || []
+    const response = await axios.get(`http://localhost:8080/comments?targetId=${props.targetId}&targetType=${props.targetType}&sort=${sortBy.value}`);
+    comments.value = response.data || [];
   } catch (error) {
-    console.error("Yorumlar yüklenemedi", error)
+    console.error("Yorumlar yüklenemedi:", error);
   }
-}
+};
+
+const getStarCount = (star) => {
+  return comments.value.filter(c => c.rating === star).length;
+};
+
+const getStarPercentage = (star) => {
+  if (comments.value.length === 0) return 0;
+  return (getStarCount(star) / comments.value.length) * 100;
+};
 
 const submitComment = async () => {
-  try {
-    errorMessage.value = ''
-    const token = localStorage.getItem('userToken')
-    await axios.post('http://localhost:8080/comments/add', newComment.value, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    newComment.value.commentText = ''
-    newComment.value.rating = 0
-    fetchComments()
-  } catch (error) {
-    errorMessage.value = "Yorum eklenirken bir hata oluştu."
+  const token = localStorage.getItem('userToken');
+  if (!token) {
+    alert("Lütfen önce giriş yapın! 👤");
+    return;
   }
-}
 
-const voteComment = async (commentId, voteType) => {
-  if (!isLoggedIn.value) return alert("Oy vermek için giriş yapmalısınız.")
   try {
-    const token = localStorage.getItem('userToken')
-    await axios.post('http://localhost:8080/comments/vote', { commentId, voteType }, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    fetchComments()
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    await axios.post('http://localhost:8080/comments/add', {
+      targetId: props.targetId,
+      targetType: props.targetType,
+      commentText: newComment.value.text,
+      rating: newComment.value.rating
+    }, config);
+
+    newComment.value = { rating: 0, text: '' };
+    fetchComments();
+    alert("Yorumunuz başarıyla paylaşıldı! ✨");
   } catch (error) {
-    console.error(error)
+    alert(error.response?.data || "Yorum gönderilirken bir hata oluştu.");
   }
-}
+};
+
+const vote = async (commentId, voteType) => {
+  const token = localStorage.getItem('userToken');
+  if (!token) {
+    alert("Oy vermek için lütfen giriş yapın! 👤");
+    return;
+  }
+
+  try {
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    await axios.post('http://localhost:8080/comments/vote', { commentId, voteType }, config);
+    fetchComments();
+  } catch (error) {
+    alert(error.response?.data || "Oy verme hatası.");
+  }
+};
 
 const submitReply = async (commentId) => {
+  const token = localStorage.getItem('userToken');
+  const text = replies.value[commentId];
+  if (!text) return;
+
   try {
-    const token = localStorage.getItem('userToken')
-    await axios.post('http://localhost:8080/comments/reply', { commentId, replyText: replyText.value }, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    replyText.value = ''
-    replyingTo.value = null
-    fetchComments()
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    await axios.post('http://localhost:8080/comments/reply', { commentId, replyText: text }, config);
+    
+    replyingTo.value[commentId] = false;
+    replies.value[commentId] = '';
+    fetchComments();
   } catch (error) {
-    alert(error.response?.data || "Yanıt gönderilemedi.")
+    alert(error.response?.data || "Yanıt gönderilirken bir hata oluştu.");
   }
-}
+};
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+};
 
 onMounted(() => {
-  isLoggedIn.value = !!localStorage.getItem('userToken')
-  userRole.value = localStorage.getItem('userRole')
-  fetchComments()
-})
+  const token = localStorage.getItem('userToken');
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      userRole.value = decoded.role;
+    } catch (e) {
+      console.error("Token decode hatası:", e);
+    }
+  }
+  fetchComments();
+});
 </script>
