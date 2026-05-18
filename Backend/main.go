@@ -108,6 +108,15 @@ type InteractionLog struct {
 	InteractionType string `json:"interactionType"`
 }
 
+type Comparison struct {
+	ComparisonID int       `json:"comparisonId"`
+	UserID       int       `json:"userId"`
+	Title        string    `json:"title"`
+	TargetType   string    `json:"targetType"`
+	TargetIDs    string    `json:"targetIds"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
 type ArtworkRequest struct {
 	Title       string  `json:"title"`
 	Price       float64 `json:"price"`
@@ -627,10 +636,24 @@ func sendTicketMessageHandler(w http.ResponseWriter, r *http.Request) {
 	var msg SupportMessage
 	json.NewDecoder(r.Body).Decode(&msg)
 	userID := r.Context().Value(userIDKey).(int)
+	
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
+
+	// Mantıksal Hata 6 Fix: Bilet durumunu kontrol et
+	var status string
+	err := db.QueryRow("SELECT Status FROM SupportTickets WHERE TicketID = @p1", msg.TicketID).Scan(&status)
+	if err != nil {
+		http.Error(w, "Bilet bulunamadı", 404)
+		return
+	}
+	if status == "Closed" || status == "Çözüldü" {
+		http.Error(w, "Çözülmüş bir talebe mesaj gönderilemez.", 403)
+		return
+	}
+
 	db.Exec("INSERT INTO SupportMessages (TicketID, SenderID, Message) VALUES (@p1, @p2, @p3)", msg.TicketID, userID, msg.Message)
-	db.Exec("UPDATE SupportTickets SET UpdatedAt = GETDATE() WHERE TicketID = @p1", msg.TicketID)
+	db.Exec("UPDATE SupportTickets SET UpdatedAt = GETDATE(), Status = 'Açık' WHERE TicketID = @p1", msg.TicketID) // Kullanıcı yazınca tekrar açılabilir veya durum güncellenebilir
 	w.WriteHeader(201)
 }
 
@@ -668,11 +691,18 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&c)
 	userID := r.Context().Value(userIDKey).(int)
 	isVerified := false
+	
 	if c.TargetType == "Artwork" {
 		isVerified = checkPurchase(userID, c.TargetID)
 	} else if c.TargetType == "Workshop" {
 		isVerified = checkEnrollment(userID, c.TargetID)
+		// Mantıksal Hata 2 Fix: Atölye yorumu için katılım şartı
+		if !isVerified {
+			http.Error(w, "Bu atölyeye yorum yapabilmek için önce katılmanız gerekmektedir.", 403)
+			return
+		}
 	}
+	
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
 	db.Exec("INSERT INTO Comments (UserID, TargetID, TargetType, CommentText, Rating, IsVerified) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)", userID, c.TargetID, c.TargetType, c.CommentText, c.Rating, isVerified)
@@ -708,7 +738,7 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 			(SELECT TOP 1 ru.UserRole FROM CommentReplies cr JOIN Users ru ON cr.UserID = ru.UserID WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as ReplierRole
 		FROM Comments c 
 		JOIN Users u ON c.UserID = u.UserID 
-		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %s`, orderClause)
+		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %%s`, orderClause)
 
 	rows, err := db.Query(query, targetID, targetType)
 	if err != nil {
@@ -774,7 +804,15 @@ func voteCommentHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			db.Exec("UPDATE Comments SET Downvotes = Downvotes + 1 WHERE CommentID = @p1", req.CommentID)
 		}
-	} else if existingVote != req.VoteType {
+	} else if existingVote == req.VoteType {
+		// Oyu geri çek (Toggle off)
+		db.Exec("DELETE FROM CommentVotes WHERE UserID = @p1 AND CommentID = @p2", userID, req.CommentID)
+		if req.VoteType == "Up" {
+			db.Exec("UPDATE Comments SET Upvotes = Upvotes - 1 WHERE CommentID = @p1", req.CommentID)
+		} else {
+			db.Exec("UPDATE Comments SET Downvotes = Downvotes - 1 WHERE CommentID = @p1", req.CommentID)
+		}
+	} else {
 		// Oyu değiştir
 		db.Exec("UPDATE CommentVotes SET VoteType = @p1 WHERE UserID = @p2 AND CommentID = @p3", req.VoteType, userID, req.CommentID)
 		if req.VoteType == "Up" {
@@ -795,27 +833,9 @@ func addCommentReplyHandler(w http.ResponseWriter, r *http.Request) {
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
 
-	var targetID int
-	var targetType string
-	err := db.QueryRow("SELECT TargetID, TargetType FROM Comments WHERE CommentID = @p1", req.CommentID).Scan(&targetID, &targetType)
-	if err != nil {
-		http.Error(w, "Yorum bulunamadı", 404)
-		return
-	}
-
-	isAuthorized := false
-	if role == "Admin" || role == "Instructor" {
-		isAuthorized = true
-	} else {
-		if targetType == "Artwork" {
-			isAuthorized = checkPurchase(userID, targetID)
-		} else if targetType == "Workshop" {
-			isAuthorized = checkEnrollment(userID, targetID)
-		}
-	}
-
-	if !isAuthorized {
-		http.Error(w, "Yalnızca ürünü satın alanlar veya yöneticiler yanıt verebilir.", 403)
+	// Mantıksal Hata 1 Fix: Sadece Admin ve Instructor yanıt verebilir
+	if role != "Admin" && role != "Instructor" {
+		http.Error(w, "Yalnızca galeri yöneticileri veya eğitmenler yorumlara yanıt verebilir.", 403)
 		return
 	}
 
@@ -828,6 +848,19 @@ func logInteractionHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&logReq)
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
+
+	// Beğeni ise eşsizlik ve toggle kontrolü yap
+	if logReq.InteractionType == "Like" && logReq.UserID != nil {
+		var exists int
+		db.QueryRow("SELECT COUNT(*) FROM InteractionLogs WHERE UserID = @p1 AND TargetID = @p2 AND TargetType = @p3 AND InteractionType = 'Like'", logReq.UserID, logReq.TargetID, logReq.TargetType).Scan(&exists)
+		if exists > 0 {
+			// Zaten beğenilmişse beğeniyi kaldır (Toggle)
+			db.Exec("DELETE FROM InteractionLogs WHERE UserID = @p1 AND TargetID = @p2 AND TargetType = @p3 AND InteractionType = 'Like'", logReq.UserID, logReq.TargetID, logReq.TargetType)
+			w.WriteHeader(200)
+			return
+		}
+	}
+
 	db.Exec("INSERT INTO InteractionLogs (UserID, TargetID, TargetType, InteractionType) VALUES (@p1, @p2, @p3, @p4)", logReq.UserID, logReq.TargetID, logReq.TargetType, logReq.InteractionType)
 	w.WriteHeader(200)
 }
@@ -865,10 +898,85 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{ "totalArtworks": totalArtworks, "totalWorkshops": totalWorkshops, "totalUsers": totalUsers, "activeTickets": totalTickets })
 }
 
+func getPopularArtworksHandler(w http.ResponseWriter, r *http.Request) {
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	query := `
+		SELECT TOP 5 
+			a.Id, a.Title, ar.ArtistName, a.Category, a.ImageUrl,
+			(SELECT COUNT(*) FROM InteractionLogs i WHERE i.TargetID = a.Id AND i.TargetType = 'Artwork' AND i.InteractionType = 'View') as ViewCount
+		FROM Artworks a
+		JOIN Artists ar ON a.ArtistID = ar.ArtistID
+		ORDER BY ViewCount DESC`
+	
+	rows, err := db.Query(query)
+	if err != nil {
+		http.Error(w, "Veri çekilemedi", 500)
+		return
+	}
+	defer rows.Close()
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		var id, viewCount int
+		var title, artist, category, imageUrl string
+		rows.Scan(&id, &title, &artist, &category, &imageUrl, &viewCount)
+		results = append(results, map[string]interface{}{
+			"id": id, "title": title, "artist": artist, "category": category, "imageUrl": imageUrl, "views": viewCount,
+		})
+	}
+	json.NewEncoder(w).Encode(results)
+}
+
+func saveComparisonHandler(w http.ResponseWriter, r *http.Request) {
+	var c Comparison
+	json.NewDecoder(r.Body).Decode(&c)
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("INSERT INTO Comparisons (UserID, Title, TargetType, TargetIDs) VALUES (@p1, @p2, @p3, @p4)", userID, c.Title, c.TargetType, c.TargetIDs)
+	w.WriteHeader(201)
+}
+
+func getComparisonsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	rows, _ := db.Query("SELECT ComparisonID, Title, TargetType, TargetIDs, CreatedAt FROM Comparisons WHERE UserID = @p1 ORDER BY CreatedAt DESC", userID)
+	defer rows.Close()
+	var results []Comparison
+	for rows.Next() {
+		var c Comparison
+		c.UserID = userID
+		rows.Scan(&c.ComparisonID, &c.Title, &c.TargetType, &c.TargetIDs, &c.CreatedAt)
+		results = append(results, c)
+	}
+	if results == nil { results = []Comparison{} }
+	json.NewEncoder(w).Encode(results)
+}
+
+func updateComparisonTitleHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct { ComparisonID int `json:"comparisonId"`; Title string `json:"title"` }
+	json.NewDecoder(r.Body).Decode(&req)
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("UPDATE Comparisons SET Title = @p1 WHERE ComparisonID = @p2 AND UserID = @p3", req.Title, req.ComparisonID, userID)
+	w.WriteHeader(200)
+}
+
+func deleteComparisonHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	userID := r.Context().Value(userIDKey).(int)
+	db, _ := sql.Open("sqlserver", connString)
+	defer db.Close()
+	db.Exec("DELETE FROM Comparisons WHERE ComparisonID = @p1 AND UserID = @p2", id, userID)
+	w.WriteHeader(200)
+}
+
 func main() {
 	mux := http.NewServeMux()
 	
-	// Eski Public Endpointler
 	mux.HandleFunc("/register", registerHandler)
 	mux.HandleFunc("/login", loginHandler)
 	mux.HandleFunc("/artworks", getArtworksHandler)
@@ -876,7 +984,6 @@ func main() {
 	mux.HandleFunc("/artist", getArtistHandler)
 	mux.HandleFunc("/artists", getArtistsHandler)
 
-	// Eski Auth Gerektiren Endpointler
 	mux.HandleFunc("/profile", getUserProfileHandler)
 	mux.HandleFunc("/profile/update", updateProfileHandler)
 	mux.HandleFunc("/profile/change-password", changePasswordHandler)
@@ -896,24 +1003,26 @@ func main() {
 	mux.HandleFunc("/delete-workshop", deleteWorkshopHandler)
 	mux.HandleFunc("/my-workshops", getMyWorkshopsHandler)
 
-	// Yeni Özellikler (Public)
 	mux.HandleFunc("/comments", getCommentsHandler)
 	mux.HandleFunc("/log-interaction", logInteractionHandler)
 	mux.HandleFunc("/entity-stats", getEntityStatsHandler)
 
-	// Yeni Özellikler (Auth Gerektiren)
 	mux.HandleFunc("/tickets", isAuth(getUserTicketsHandler))
 	mux.HandleFunc("/tickets/create", isAuth(createTicketHandler))
 	mux.HandleFunc("/tickets/messages", isAuth(getTicketMessagesHandler))
 	mux.HandleFunc("/tickets/messages/send", isAuth(sendTicketMessageHandler))
 	mux.HandleFunc("/comments/add", isAuth(addCommentHandler))
 	mux.HandleFunc("/comments/vote", isAuth(voteCommentHandler))
-	mux.HandleFunc("/comments/reply", isAuth(addCommentReplyHandler)) // <-- Güncellendi
+	mux.HandleFunc("/comments/reply", isAuth(addCommentReplyHandler))
+	mux.HandleFunc("/comparisons", isAuth(getComparisonsHandler))
+	mux.HandleFunc("/comparisons/save", isAuth(saveComparisonHandler))
+	mux.HandleFunc("/comparisons/update", isAuth(updateComparisonTitleHandler))
+	mux.HandleFunc("/comparisons/delete", isAuth(deleteComparisonHandler))
 
-	// Yeni Özellikler (Admin Gerektiren)
 	mux.HandleFunc("/admin/tickets", isAdmin(getAllTicketsHandler))
 	mux.HandleFunc("/admin/tickets/update", isAdmin(updateTicketStatusHandler))
 	mux.HandleFunc("/admin/dashboard-stats", isAdmin(adminDashboardStatsHandler))
+	mux.HandleFunc("/admin/popular-artworks", isAdmin(getPopularArtworksHandler))
 
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
