@@ -414,6 +414,114 @@ func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Başarılı! 🎉"})
 }
 
+// 🚀 ATÖLYE REZERVASYON VE ÖDEME YAPMA MANTIĞI
+// 🚀 GÜNCELLENEN ATÖLYE ÖDEME VE REZERVASYON MANTIĞI
+type WorkshopEnrollRequest struct {
+	Email            string `json:"email"`
+	WorkshopID       int    `json:"workshopId"`
+	ParticipantCount int    `json:"participantCount"`
+	ReservedDate     string `json:"reservedDate"`
+	PaymentMethod    string `json:"paymentMethod"` // 🚀 Yeni eklenen alan
+}
+
+func enrollWorkshopWithPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var req WorkshopEnrollRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Geçersiz veri formatı! ❌"})
+		return
+	}
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Veritabanı bağlantı hatası!"})
+		return
+	}
+	defer db.Close()
+
+	// 1. Atölyenin bir kişilik fiyatını çekiyoruz
+	var workshopPrice float64
+	var title string
+	err = db.QueryRow("SELECT Price, Title FROM Workshops WHERE Id = @p1", req.WorkshopID).Scan(&workshopPrice, &title)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Atölye bulunamadı! 🔍"})
+		return
+	}
+
+	// Toplam ödenecek tutarı katılımcı sayısıyla çarpıyoruz
+	totalPrice := workshopPrice * float64(req.ParticipantCount)
+
+	// 🔥 ÖDEME YÖNTEMİ KONTROLÜ
+	if req.PaymentMethod == "Uygulama Bakiyesi" || req.PaymentMethod == "Cüzdan" {
+		// 💳 MANTIK A: Uygulama Bakiyesi ile Ödeme Kontrolü ve Düşüşü
+		var userBalance float64
+		err = db.QueryRow("SELECT Balance FROM Users WHERE Email = @p1", req.Email).Scan(&userBalance)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Kullanıcı hesabı bulunamadı! 👤"})
+			return
+		}
+
+		if userBalance < totalPrice {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Bakiyeniz yetersiz! 💸 Lütfen profilinizden bakiye yükleyin."})
+			return
+		}
+
+		// Transaction başlatarak eşzamanlı bakiye düşüp kayıt ekliyoruz
+		tx, err := db.Begin()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		_, err = tx.Exec("UPDATE Users SET Balance = Balance - @p1 WHERE Email = @p2", totalPrice, req.Email)
+		if err != nil {
+			tx.Rollback()
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		query := `INSERT INTO WorkshopEnrollments (UserEmail, WorkshopId, ParticipantCount, ReservedDate, Status) 
+                  VALUES (@p1, @p2, @p3, @p4, 'Onay Bekliyor')`
+		_, err = tx.Exec(query, req.Email, req.WorkshopID, req.ParticipantCount, req.ReservedDate)
+		if err != nil {
+			tx.Rollback()
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		tx.Commit()
+	} else {
+		// 💳 MANTIK B: Kredi Kartı ile Doğrudan Ödeme (Bakiyeye dokunmadan direkt kaydeder)
+		query := `INSERT INTO WorkshopEnrollments (UserEmail, WorkshopId, ParticipantCount, ReservedDate, Status) 
+                  VALUES (@p1, @p2, @p3, @p4, 'Onay Bekliyor')`
+		_, err = db.Exec(query, req.Email, req.WorkshopID, req.ParticipantCount, req.ReservedDate)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon oluşturulurken bir hata oluştu."})
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Atölye rezervasyonu başarıyla oluşturuldu ve ödemesi alındı! 🎉🎨",
+	})
+}
+
 // ! PROFİL BİLGİLERİNİ GETİRME
 func getUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
@@ -799,70 +907,37 @@ func enrollWorkshopHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyonunuz başarıyla oluşturuldu! 🎉"})
 }
 
-// ! KULLANICININ ATÖLYE KAYITLARINI GETİRME
-func getUserEnrollmentsHandler(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		http.Error(w, "Email parametresi gerekli", http.StatusBadRequest)
-		return
-	}
-
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
-	db, err := sql.Open("sqlserver", connString)
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	query := `
-        SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, e.CreatedAt, w.Location, w.AvailableDates
-        FROM WorkshopEnrollments e
-        JOIN Workshops w ON e.WorkshopId = w.Id
-        WHERE e.UserEmail = @p1
-        ORDER BY e.CreatedAt DESC`
-
-	rows, err := db.Query(query, email)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var enrollments []map[string]interface{}
-	for rows.Next() {
-		var id, pCount int
-		var title, rDate, cAt, location, aDates string
-		rows.Scan(&id, &title, &pCount, &rDate, &cAt, &location, &aDates)
-
-		enrollments = append(enrollments, map[string]interface{}{
-			"id":               id,
-			"workshopTitle":    title,
-			"participantCount": pCount,
-			"reservedDate":     rDate,
-			"createdAt":        cAt,
-			"location":         location,
-			"availableDates":   aDates,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(enrollments)
-}
-
-// ! ATÖLYE KAYIT BİLGİLERİNİ GÜNCELLEME
+// ! ATÖLYE KAYIT BİLGİLERİNİ GÜNCELLEME (Ekstra Ödeme ve Bakiye Kontrollü)
 func updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+	// CORS ve Metot Güvenlik Önlemleri
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "PUT, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != http.MethodPut {
 		http.Error(w, "Sadece PUT metodu destekleniyor", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// 🚀 Geliştirilmiş Veri Modeli: Ödeme yöntemi ve kullanıcı email bilgisi eklendi
 	var data struct {
 		ID               int    `json:"id"`
 		ParticipantCount int    `json:"participantCount"`
 		ReservedDate     string `json:"reservedDate"`
+		PaymentMethod    string `json:"paymentMethod"`
+		Email            string `json:"email"`
 	}
-	json.NewDecoder(r.Body).Decode(&data)
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Geçersiz veri formatı! ❌"})
+		return
+	}
 
 	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, err := sql.Open("sqlserver", connString)
@@ -872,12 +947,91 @@ func updateEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	query := "UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2 WHERE Id = @p3"
-	_, err = db.Exec(query, data.ParticipantCount, data.ReservedDate, data.ID)
-
+	// 1. Rezervasyonun veritabanındaki eski kişi sayısını ve hangi atölyeye ait olduğunu çekiyoruz
+	var oldParticipantCount, workshopID int
+	err = db.QueryRow("SELECT WorkshopId, ParticipantCount FROM WorkshopEnrollments WHERE Id = @p1", data.ID).Scan(&workshopID, &oldParticipantCount)
 	if err != nil {
-		http.Error(w, "Güncelleme hatası: "+err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon bulunamadı! 🔍"})
 		return
+	}
+
+	// 2. Atölyenin tek kişilik güncel ham fiyatını çekiyoruz
+	var workshopPrice float64
+	err = db.QueryRow("SELECT Price FROM Workshops WHERE Id = @p1", workshopID).Scan(&workshopPrice)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Atölye fiyatı bulunamadı!"})
+		return
+	}
+
+	// 📊 Katılımcı sayısı farkını hesaplıyoruz
+	diff := data.ParticipantCount - oldParticipantCount
+
+	if diff > 0 {
+		// Eğer kullanıcı kişi sayısını artırdıysa aradaki farkın ekstra ücreti hesaplanır
+		extraPrice := workshopPrice * float64(diff)
+
+		if data.PaymentMethod == "Uygulama Bakiyesi" {
+			// Kullanıcının mevcut cüzdan bakiyesini çekiyoruz
+			var userBalance float64
+			err = db.QueryRow("SELECT Balance FROM Users WHERE Email = @p1", data.Email).Scan(&userBalance)
+
+			if err != nil {
+				w.WriteHeader(http.StatusUnauthorized) // <-- Hatalı olan http.StatusString burasıydı, düzelttik!
+				json.NewEncoder(w).Encode(map[string]string{"message": "Kullanıcı hesabı bulunamadı!"})
+				return
+			}
+
+			// Bakiye yetersizse işlemi iptal et ve hata fırlat (Frontend bu mesajı alert olarak basacak)
+			if userBalance < extraPrice {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"message": "Ekstra katılımcı ödemesi için bakiyeniz yetersiz! 💸"})
+				return
+			}
+
+			// TRANSACTION BAŞLATIYORUZ: Eşzamanlı bakiye düşüp rezervasyon güncellenmeli
+			tx, err := db.Begin()
+			if err != nil {
+				http.Error(w, "Transaction başlatılamadı", http.StatusInternalServerError)
+				return
+			}
+
+			// Bakiyeden ekstra ücreti düşüyoruz
+			_, err = tx.Exec("UPDATE Users SET Balance = Balance - @p1 WHERE Email = @p2", extraPrice, data.Email)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Bakiye düşülürken hata oluştu", http.StatusInternalServerError)
+				return
+			}
+
+			// Bilgiler değiştiği ve sayı arttığı için onay durumunu yeniden 'Onay Bekliyor' yapıyoruz 🚀
+			query := "UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2, Status = 'Onay Bekliyor' WHERE Id = @p3"
+			_, err = tx.Exec(query, data.ParticipantCount, data.ReservedDate, data.ID)
+			if err != nil {
+				tx.Rollback()
+				http.Error(w, "Güncelleme hatası", http.StatusInternalServerError)
+				return
+			}
+
+			tx.Commit()
+		} else {
+			// Ödeme yöntemi Kredi Kartı ise bakiyeye dokunmadan direkt karttan çekilmiş sayıp durumu 'Onay Bekliyor'a çekiyoruz
+			query := "UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2, Status = 'Onay Bekliyor' WHERE Id = @p3"
+			_, err = db.Exec(query, data.ParticipantCount, data.ReservedDate, data.ID)
+			if err != nil {
+				http.Error(w, "Güncelleme hatası: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+	} else {
+		// Kişi sayısı azaldıysa veya aynı kaldıysa ekstra ödemeye gerek yok, doğrudan bilgileri güncelliyoruz
+		query := "UPDATE WorkshopEnrollments SET ParticipantCount = @p1, ReservedDate = @p2 WHERE Id = @p3"
+		_, err = db.Exec(query, data.ParticipantCount, data.ReservedDate, data.ID)
+		if err != nil {
+			http.Error(w, "Güncelleme hatası: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1108,6 +1262,168 @@ func confirmArtworksSaleHandler(w http.ResponseWriter, r *http.Request) {
 	// 5. Başarılı Yanıt Dön
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Satış başarıyla onaylandı! ✅🎨"})
+}
+
+// ! KULLANICININ KENDİ ATÖLYE REZERVASYONLARININ FIYATLI SÜRÜMÜ
+func getUserEnrollmentsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		http.Error(w, "Email parametresi gerekli", http.StatusBadRequest)
+		return
+	}
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	// 🚀 GELİŞTİRME: w.Price alanı da sorguya dahil edildi kanka!
+	query := `
+        SELECT e.Id, w.Title, e.ParticipantCount, e.ReservedDate, 
+               CONVERT(NVARCHAR, e.CreatedAt, 120) as CreatedAt, 
+               w.Location, w.AvailableDates, ISNULL(e.Status, 'Onay Bekliyor'), w.Price
+        FROM WorkshopEnrollments e
+        JOIN Workshops w ON e.WorkshopId = w.Id
+        WHERE e.UserEmail = @p1
+        ORDER BY e.CreatedAt DESC`
+
+	rows, err := db.Query(query, email)
+	if err != nil {
+		log.Printf("❌ user-enrollments SQL Hatası: %v", err)
+		http.Error(w, "Sorgu hatası: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var enrollments []map[string]interface{}
+	for rows.Next() {
+		var id, pCount int
+		var price float64 // fiyat değişkeni
+		var title, rDate, cAt, location, aDates, status string
+		err := rows.Scan(&id, &title, &pCount, &rDate, &cAt, &location, &aDates, &status, &price)
+		if err != nil {
+			log.Printf("❌ user-enrollments Scan Hatası: %v", err)
+			continue
+		}
+
+		enrollments = append(enrollments, map[string]interface{}{
+			"id":               id,
+			"workshopTitle":    title,
+			"participantCount": pCount,
+			"reservedDate":     rDate,
+			"createdAt":        cAt,
+			"location":         location,
+			"availableDates":   aDates,
+			"status":           status,
+			"workshopPrice":    price, // 🚀 Düzenleme modalında canlı çarpmak için fırlattık!
+		})
+	}
+
+	if enrollments == nil {
+		enrollments = []map[string]interface{}{}
+	}
+	json.NewEncoder(w).Encode(enrollments)
+}
+
+// ! 2. EĞİTMENİN ATÖLYELERİNE GELEN REZERVASYONLARI LİSTELEME (Zırhlı Sürüm)
+func getSellerWorkshopsOrdersHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	sellerId := r.URL.Query().Get("sellerId")
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		http.Error(w, "DB Hatası", 500)
+		return
+	}
+	defer db.Close()
+
+	query := `
+        SELECT e.Id, w.Title, e.UserEmail, e.ParticipantCount, e.ReservedDate, ISNULL(e.Status, 'Onay Bekliyor')
+        FROM WorkshopEnrollments e
+        JOIN Workshops w ON e.WorkshopId = w.Id
+        WHERE w.InstructorID = @p1
+        ORDER BY e.CreatedAt DESC`
+
+	rows, err := db.Query(query, sellerId)
+	if err != nil {
+		log.Printf("❌ seller-workshops-orders SQL Hatası: %v", err) // Tabloda Status yoksa burası uyarır
+		http.Error(w, "Sorgu hatası: "+err.Error(), 500)
+		return
+	}
+	defer rows.Close()
+
+	var orders []map[string]interface{}
+	for rows.Next() {
+		var id, participantCount int
+		var title, email, reservedDate, status string
+		err := rows.Scan(&id, &title, &email, &participantCount, &reservedDate, &status)
+		if err != nil {
+			log.Printf("❌ seller-workshops-orders Scan Hatası: %v", err)
+			continue
+		}
+
+		orders = append(orders, map[string]interface{}{
+			"id":               id,
+			"title":            title,
+			"email":            email,
+			"participantCount": participantCount,
+			"reservedDate":     reservedDate,
+			"status":           status,
+		})
+	}
+
+	if orders == nil {
+		orders = []map[string]interface{}{}
+	}
+	json.NewEncoder(w).Encode(orders)
+}
+
+// ! 2. ATÖLYE REZERVASYONUNU ONAYLAMA HANDLERI
+func confirmWorkshopEnrollmentHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var req struct {
+		EnrollmentId int `json:"enrollmentId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Geçersiz istek! ❌"})
+		return
+	}
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		http.Error(w, "DB Bağlantı Hatası", 500)
+		return
+	}
+	defer db.Close()
+
+	// WorkshopEnrollments tablosundaki Status alanını 'Onaylandı' yapıyoruz 🚀
+	query := "UPDATE WorkshopEnrollments SET Status = 'Onaylandı' WHERE Id = @p1"
+	_, err = db.Exec(query, req.EnrollmentId)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Rezervasyon onaylanırken hata oluştu: " + err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Atölye rezervasyonu başarıyla onaylandı! ✅🎨"})
 }
 
 func getSellerOrdersHandler(w http.ResponseWriter, r *http.Request) {
@@ -1655,7 +1971,10 @@ func main() {
 	mux.HandleFunc("/check-coupon", checkCouponHandler)
 	mux.HandleFunc("/confirm-sale", confirmArtworksSaleHandler)
 	mux.HandleFunc("/seller-orders", getSellerOrdersHandler)
-	// --- KRİTİK DOKUNUŞ: KAMPANYALARI VE KUPONLARI BURADA TETİKLİYORUZ ---
+	mux.HandleFunc("/seller-workshops-orders", getSellerWorkshopsOrdersHandler)
+	mux.HandleFunc("/confirm-workshop-enrollment", confirmWorkshopEnrollmentHandler)
+	mux.HandleFunc("/enroll-workshop-payment", enrollWorkshopWithPaymentHandler)
+
 	fmt.Println("Günlük kampanyalar veritabanına işleniyor...")
 	err = ApplyRandomCampaigns(db)
 	if err != nil {

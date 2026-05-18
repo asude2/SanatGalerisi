@@ -77,8 +77,10 @@ CREATE TABLE WorkshopEnrollments (
     ParticipantCount INT DEFAULT 1, 
     ReservedDate NVARCHAR(100) NOT NULL,   
     CreatedAt DATETIME DEFAULT GETDATE(),
+    Status NVARCHAR(50) DEFAULT 'Onay Bekliyor',
     CONSTRAINT FK_Enrollment_Workshop FOREIGN KEY (WorkshopId) REFERENCES Workshops(Id)
 );
+
 
 CREATE TABLE ArtworkPurchases (
     Id INT PRIMARY KEY IDENTITY(1,1),
