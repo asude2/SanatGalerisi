@@ -1,4 +1,50 @@
 <template>
+  <div v-if="recommendedArtworks.length > 0" class="px-10 mt-10 mb-14 animate-in fade-in slide-in-from-top-4 duration-1000">
+    <div class="relative bg-[#1a3a3a] rounded-[45px] p-10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] overflow-hidden border border-white/5 flex flex-col lg:flex-row items-center gap-10">
+         
+      
+      <h2 class="text-[#e9c46a] text-4xl font-black tracking-tight leading-tight">
+        {{ userLastCategory }} Severlere <br/> 
+        <span class="text-white">Ekstra %5 İndirim!</span>
+      </h2>
+      <p class="text-gray-300 text-lg leading-relaxed opacity-80">
+        {{ userLastCategory }} kategorisindeki tutkunu fark ettik. <br/>
+        Kalan eserlerde sana özel indirim tanımladık!
+      </p>
+
+      
+      <div class="lg:w-1/3 z-10 text-left">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-[#e9c46a] text-2xl animate-pulse">✦</span>
+          <h2 class="text-[#e9c46a] text-4xl font-black tracking-tight leading-tight">
+            {{ userLastCategory }} Tutkuna <br/> 
+            <span class="text-white">Özel Seçkiler</span>
+          </h2>
+        </div>
+        <p class="text-gray-300 text-lg leading-relaxed opacity-80">
+          En son <strong>{{ userLastCategory }}</strong> eserleriyle ilgilendin. <br/>
+          Senin için seçtiğimiz yeni fırsatlara göz at!
+        </p>
+      </div>
+
+      <div class="lg:w-2/3 w-full z-10">
+        <div class="flex gap-6 overflow-x-auto pb-4 no-scrollbar">
+          <div v-for="art in recommendedArtworks" :key="art.Id || art.id" class="min-w-[240px] group">
+            <div class="bg-[#244a4a] p-3 rounded-[30px] border border-white/10 transition-all duration-500 group-hover:border-[#e9c46a]/50 group-hover:-translate-y-2 shadow-xl">
+               <ArtworkCard 
+                 :artwork="art" 
+                 class="!shadow-none !bg-transparent border-none scale-95 group-hover:scale-100 transition-transform" 
+               />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-white/5 to-transparent pointer-events-none"></div>
+      <div class="absolute -left-20 -bottom-20 w-80 h-80 bg-[#2a9d8f]/10 rounded-full blur-[100px]"></div>
+    </div>
+  </div>
+
   <div class="min-h-screen bg-gray-50">
     <header class="bg-galeri-yesil text-white shadow-2xl rounded-b-[50px] p-8 pb-12">
       <div class="container mx-auto flex justify-between items-center">
@@ -30,122 +76,75 @@
         </button>
 
         <div v-if="userRole === 'Instructor'" class="flex gap-4">
-          <button 
-            @click="router.push('/add-artwork')" 
-            class="bg-galeri-yesil text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-green-100 hover:scale-105 transition-transform cursor-pointer"
-          >
-            + Eser Ekle
-          </button>
-          <button 
-            @click="router.push('/add-workshop')" 
-            class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:scale-105 transition-transform cursor-pointer"
-          >
-            + Atölye Oluştur
-          </button>
+          <button @click="router.push('/add-artwork')" class="bg-galeri-yesil text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-green-100 hover:scale-105 transition-transform cursor-pointer">+ Eser Ekle</button>
+          <button @click="router.push('/add-workshop')" class="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:scale-105 transition-transform cursor-pointer">+ Atölye Oluştur</button>
         </div>
     </div>
 
-    <main class="container mx-auto -mt-4 px-4 pb-20">
-      <div class="bg-white p-6 rounded-2xl shadow-sm mb-12 flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-100 mt-6">
-        
-        <div class="relative w-full md:w-96">
-          <input 
-            v-model="searchQuery" 
-            type="text" 
-            placeholder="Eser veya sanatçı ara..." 
-            class="w-full p-4 pl-12 bg-gray-50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-galeri-yesil/20 border border-transparent focus:border-galeri-yesil/30 transition-all" 
-          />
-          <span class="absolute left-4 top-4">🔍</span>
-        </div>
-        
-
-        <div class="relative">
-          <button 
-            @click.stop="showCategories = !showCategories"
-            class="px-6 py-4 bg-gray-50 text-gray-700 rounded-2xl font-bold hover:bg-gray-100 border border-gray-100 transition-all cursor-pointer flex items-center gap-2 min-w-[160px] justify-between"
-            :class="{ 'ring-2 ring-galeri-yesil ring-offset-1': selectedCategory }"
-          >
-            {{ selectedCategory || 'Kategoriler' }}
-            <span class="text-xs transition-transform" :class="{ 'rotate-180': showCategories }">▼</span>
-          </button>
-
-          <div v-if="showCategories" class="absolute top-full right-0 mt-3 bg-white rounded-2xl shadow-2xl border border-gray-50 z-[100] w-64 overflow-hidden">
-            <div class="p-2">
-              <button 
-                @click="selectCategory(null)"
-                class="w-full text-left px-4 py-3 rounded-xl transition-all mb-1 font-medium"
-                :class="!selectedCategory ? 'bg-galeri-yesil text-white' : 'hover:bg-gray-50 text-gray-600'"
-              >
-                Tüm Eserler
-              </button>
-              <button 
-                v-for="category in categories"
-                :key="category"
-                @click="selectCategory(category)"
-                class="w-full text-left px-4 py-3 rounded-xl transition-all mb-1 font-medium capitalize"
-                :class="selectedCategory === category ? 'bg-galeri-yesil text-white' : 'hover:bg-gray-50 text-gray-600'"
-              >
-                {{ category }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-
-                <div class="flex items-center gap-4 mt-6">
-          <div class="flex items-center bg-white border-2 border-gray-100 rounded-2xl p-1 shadow-sm">
-            <button 
-              @click="sortOrder = 'asc'" 
-              :class="sortOrder === 'asc' ? 'bg-galeri-yesil text-white' : 'text-gray-500 hover:bg-gray-50'"
-              class="px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2"
-            >
-              <span>📈</span> Artan Sırada
-            </button>
-            <button 
-              @click="sortOrder = 'desc'" 
-              :class="sortOrder === 'desc' ? 'bg-galeri-yesil text-white' : 'text-gray-500 hover:bg-gray-50'"
-              class="px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2"
-            >
-              <span>📉</span> Azalan Sırada
-            </button>
+    <main class="container mx-auto px-4 pb-20">
+      <div class="bg-white p-6 rounded-3xl shadow-sm mb-12 flex flex-col md:flex-row gap-6 items-center justify-between border border-gray-100 mt-6">
+        <div class="flex flex-wrap items-center gap-4 w-full">
+          <div class="relative w-full md:w-80">
+            <input 
+              v-model="searchQuery" 
+              type="text" 
+              placeholder="Eser ara..." 
+              class="w-full p-4 pl-12 bg-gray-50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-galeri-yesil/20 border border-gray-100" 
+            />
+            <span class="absolute left-4 top-4">🔍</span>
           </div>
 
+          <select v-model="activeFilterType" class="p-4 bg-gray-50 text-gray-700 rounded-2xl font-bold border border-gray-100 outline-none focus:ring-2 focus:ring-galeri-yesil/20 min-w-[180px]">
+            <option value="none">Filtreleme Yok</option>
+            <option value="price">💰 Fiyata Göre</option>
+            <option value="artist">👨‍🎨 Sanatçıya Göre</option>
+            <option value="category">🖼️ Kategoriye Göre</option>
+          </select>
+
+          <div v-if="activeFilterType === 'price'" class="flex items-center bg-gray-50 p-1 rounded-2xl border border-gray-100 animate-in fade-in slide-in-from-left-2">
+            <button @click="priceOrder = 'asc'" :class="priceOrder === 'asc' ? 'bg-galeri-yesil text-white shadow-md' : 'text-gray-500'" class="px-4 py-3 rounded-xl font-bold transition-all">📈 Artan</button>
+            <button @click="priceOrder = 'desc'" :class="priceOrder === 'desc' ? 'bg-galeri-yesil text-white shadow-md' : 'text-gray-500'" class="px-4 py-3 rounded-xl font-bold transition-all">📉 Azalan</button>
+          </div>
+
+          <select v-if="activeFilterType === 'artist'" v-model="selectedArtist" class="p-4 bg-blue-50 text-blue-700 rounded-2xl font-bold border border-blue-100 outline-none">
+            <option value="">Tüm Sanatçılar</option>
+            <option v-for="artist in artistList" :key="artist" :value="artist">{{ artist }}</option>
+          </select>
+
+          <select v-if="activeFilterType === 'category'" v-model="selectedCategory" class="p-4 bg-gray-50 text-gray-700 rounded-2xl font-bold border border-gray-100 outline-none">
+            <option value="">Tüm Kategoriler</option>
+            <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
+
           <button 
-            v-if="sortOrder" 
-            @click="sortOrder = null" 
-            class="text-sm text-red-500 font-bold hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
+            @click="showOnlyCampaigns = !showOnlyCampaigns" 
+            :class="showOnlyCampaigns ? 'bg-red-600 text-white' : 'bg-white text-red-600 border-red-100'"
+            class="flex items-center gap-2 px-6 py-4 rounded-2xl border-2 font-black transition-all shadow-lg ml-auto"
           >
-            Seçimi Temizle
+            <span>🔥</span> Kampanyalı Ürünler
           </button>
         </div>
       </div>
 
-        <div v-if="filteredArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          <ArtworkCard 
-            v-for="art in filteredArtworks" 
-            :key="art.Id || art.id"
-            :artwork="art" 
-          />
-        </div>
+      <div v-if="filteredArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+        <ArtworkCard 
+          v-for="art in filteredArtworks" 
+          :key="art.Id || art.id"
+          :artwork="art" 
+        />
+      </div>
 
-        
       <div v-else class="text-center py-32 bg-white rounded-[40px] border border-dashed border-gray-200">
         <span class="text-7xl block mb-6">🏝️</span>
-        <h3 class="text-2xl font-bold text-gray-800 mb-2">Sonuç Bulunamadı</h3>
-        <p class="text-gray-400 text-lg max-w-md mx-auto">
-          {{ selectedCategory ? `"${selectedCategory}" kategorisinde` : 'Aradığınız kriterlerde' }} 
-          eşleşen bir eser bulamadık. Lütfen aramayı değiştirmeyi deneyin.
-        </p>
-        <button @click="resetFilters" class="mt-6 text-galeri-yesil font-bold hover:underline">
-          Filtreleri Temizle
-        </button>
+        <h3 class="text-2xl font-bold text-gray-800 mb-2">Eser Bulunamadı</h3>
+        <button @click="resetFilters" class="mt-6 text-galeri-yesil font-bold hover:underline">Filtreleri Temizle</button>
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, onUnmounted } from 'vue' 
+import { ref, onMounted, computed } from 'vue' 
 import { useRouter } from 'vue-router'
 import { jwtDecode } from 'jwt-decode'
 import axios from 'axios'
@@ -155,68 +154,138 @@ const router = useRouter()
 const userName = ref('Misafir')
 const userRole = ref('')
 const artworks = ref([])
+
+// --- FİLTRELEME STATE'LERİ ---
 const searchQuery = ref('')
-const selectedCategory = ref(null)
-const showCategories = ref(false)
+const activeFilterType = ref('none') 
+const priceOrder = ref('asc')        
+const selectedArtist = ref('')
+const selectedCategory = ref('')
+const showOnlyCampaigns = ref(false)
 
 const categories = ref(['Manzara', 'Rönesans', 'Realizm', 'Natürmort', 'Modern Sanat'])
 
+// --- 1. KULLANICI TERCİHİ (Duplicate silindi) ---
+// --- 1. KULLANICI TERCİHİ VE ÖNERİ SİSTEMİ ---
 
-const fetchArtworks = async () => {
-  try {
-    const response = await axios.get('http://localhost:8080/artworks')
-    artworks.value = response.data || [] 
-  } catch (error) {
-    console.error("Eserler yüklenirken bir hata oluştu:", error)
-  }
-}
+// Bu computed zaten dinamik çalışıyor: en son ne alındıysa o gelir.
+const userLastCategory = computed(() => {
+  return localStorage.getItem('lastPurchasedCategory') || '';
+});
 
-const selectCategory = (category) => {
-  selectedCategory.value = category
-  showCategories.value = false
-}
+// Üstteki "Kişiye Özel Seçkiler" Bandı
+// --- 1. DİNAMİK ÖNERİ ALGORİTMASI (Gelişmiş Versiyon) ---
 
-const resetFilters = () => {
-  searchQuery.value = ''
-  selectedCategory.value = null
-}
+const recommendedArtworks = computed(() => {
+  if (!userLastCategory.value || !artworks.value || artworks.value.length === 0) return [];
 
-// Menü dışına tıklayınca kapatma
-const closeMenu = () => { showCategories.value = false }
-onMounted(() => { window.addEventListener('click', closeMenu) })
-onUnmounted(() => { window.removeEventListener('click', closeMenu) })
+  return artworks.value
+    .filter(a => {
+      // 1. Kategori eşleşmeli
+      const cat = a.category || a.Category;
+      const isSameCategory = cat === userLastCategory.value;
+      
+      // 2. Satılmamış olmalı (En önemli kısım!)
+      const sold = a.issold !== undefined ? a.issold : a.IsSold;
+      const isNotSold = sold != 1 && sold != true;
 
-const sortOrder = ref(null) // 'asc', 'desc' veya null olabilir
+      return isSameCategory && isNotSold;
+    })
+    .map(a => {
+      // 🔥 ŞOV BURADA: Her esere o kişiye özel %5 ekstra indirim tanımlıyoruz
+      // Mevcut bir indirimi varsa onun üzerine değil, son fiyat üzerinden %5 daha düşüyoruz
+      const basePrice = a.price;
+      const currentDiscount = a.DiscountRate || a.discountrate || 0;
+      const priceAfterFirstDiscount = basePrice * (1 - currentDiscount / 100);
+      
+      // Kişiye özel "Sadakat İndirimi" (%5)
+      const finalSpecialPrice = priceAfterFirstDiscount * 0.95;
 
+      return {
+        ...a,
+        specialPrice: finalSpecialPrice, // Template'de bunu kullanacağız
+        hasSpecialOffer: true
+      };
+    })
+    .slice(0, 4);
+});
+// --- 2. ANA GALERİ FİLTRELEME MANTIĞI ---
 const filteredArtworks = computed(() => {
-  if (!artworks.value) return [] 
-  let result = [...artworks.value] // Orijinal veriyi bozmamak için kopyasını alıyoruz
+  if (!artworks.value || artworks.value.length === 0) return [];
+  
+  // ADIM 1: Satılanları eliyoruz
+  let result = artworks.value.filter(a => {
+    const soldStatus = a.issold !== undefined ? a.issold : 
+                       a.IsSold !== undefined ? a.IsSold : 
+                       a.is_sold !== undefined ? a.is_sold : false;
+    return soldStatus != 1 && soldStatus != true && soldStatus != "1";
+  });
 
-  // 1. ARAMA FİLTRESİ
-  const search = searchQuery.value.toLowerCase().trim()
+  // ADIM 2: Arama
+  const search = searchQuery.value?.toLowerCase().trim();
   if (search) {
     result = result.filter(artwork => 
       artwork.title?.toLowerCase().includes(search) || 
       artwork.artist?.toLowerCase().includes(search)
-    )
+    );
   }
 
-  // 2. KATEGORİ FİLTRESİ
-  if (selectedCategory.value) {
-    result = result.filter(artwork => artwork.category === selectedCategory.value)
+  // ADIM 3: Kampanya
+  if (showOnlyCampaigns.value) {
+    result = result.filter(a => {
+      const isPromo = a.iscampaign !== undefined ? a.iscampaign : a.IsCampaign;
+      return isPromo == true || isPromo == 1;
+    });
   }
 
-  // 3. SIRALAMA ŞOVU (Artan veya Azalan)
-  if (sortOrder.value === 'asc') {
-    // Küçükten büyüğe (Ucuzdan Pahalıya)
-    result.sort((a, b) => a.price - b.price)
-  } else if (sortOrder.value === 'desc') {
-    // Büyükten küçüğe (Pahalıdan Ucuza)
-    result.sort((a, b) => b.price - a.price)
+  // ADIM 4: Kategori/Sanatçı
+  if (activeFilterType.value === 'artist' && selectedArtist.value) {
+    result = result.filter(a => (a.artist || a.Artist) === selectedArtist.value);
+  }
+  if (activeFilterType.value === 'category' && selectedCategory.value) {
+    result = result.filter(a => (a.category || a.Category) === selectedCategory.value);
   }
 
-  return result
+  // ADIM 5: Fiyat Sıralama
+  if (activeFilterType.value === 'price') {
+    result.sort((a, b) => {
+      const getFinalPrice = (item) => {
+        const isPromo = item.iscampaign !== undefined ? item.iscampaign : item.IsCampaign;
+        const discount = item.discountrate !== undefined ? item.discountrate : item.DiscountRate;
+        return (isPromo == true || isPromo == 1) 
+          ? item.price * (1 - (discount || 0) / 100) 
+          : item.price;
+      };
+      const priceA = getFinalPrice(a);
+      const priceB = getFinalPrice(b);
+      return priceOrder.value === 'asc' ? priceA - priceB : priceB - priceA;
+    });
+  }
+  return result;
+});
+
+const fetchArtworks = async () => {
+  try {
+    const response = await axios.get(`http://localhost:8080/artworks?t=${new Date().getTime()}`);
+    artworks.value = response.data;
+  } catch (error) {
+    console.error("Eserler yüklenirken hata:", error);
+  }
+};
+
+const artistList = computed(() => {
+  const artists = artworks.value.map(a => a.artist || a.Artist)
+  return [...new Set(artists)].filter(a => a) 
 })
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  activeFilterType.value = 'none'
+  selectedCategory.value = ''
+  selectedArtist.value = ''
+  showOnlyCampaigns.value = false
+  priceOrder.value = 'asc'
+}
 
 onMounted(() => {
   const token = localStorage.getItem('userToken')

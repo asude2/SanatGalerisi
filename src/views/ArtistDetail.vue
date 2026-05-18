@@ -33,12 +33,8 @@
         <div v-if="artistArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           <ArtworkCard 
             v-for="artwork in artistArtworks" 
-            :key="artwork.id"
-            :id="artwork.id"
-            :title="artwork.title" 
-            :artist="artwork.artist" 
-            :price="artwork.price" 
-            :image="artwork.imageUrl"
+            :key="artwork.id || artwork.Id"
+            :artwork="artwork" 
           />
         </div>
 
@@ -91,7 +87,6 @@ import WorkshopCard from '../components/WorkshopCard.vue';
 const route = useRoute();
 const router = useRouter();
 const artistData = ref(null);
-const allArtworks = ref([]);
 const allWorkshops = ref([]);
 const activeTab = ref(route.query.tab || 'artworks');
 
@@ -113,14 +108,13 @@ watch(
 
 onMounted(async () => {
   try {
-    const [artistRes, artworksRes, workshopsRes] = await Promise.all([
+    // 🚀 Gelişmiş İstek Yapısı: Artworks artık direkt artist nesnesinin içinden geliyor!
+    const [artistRes, workshopsRes] = await Promise.all([
       axios.get(`http://localhost:8080/artist?name=${encodeURIComponent(route.params.name)}`),
-      axios.get('http://localhost:8080/artworks'),
       axios.get('http://localhost:8080/workshops')
     ]);
 
     artistData.value = artistRes.data;
-    allArtworks.value = artworksRes.data || [];
     allWorkshops.value = workshopsRes.data || [];
 
     scrollToSection(activeTab.value);
@@ -129,8 +123,9 @@ onMounted(async () => {
   }
 });
 
+// 🚀 Backend'den harf uyumlu gelen listeyi doğrudan bağlıyoruz
 const artistArtworks = computed(() => {
-  return allArtworks.value.filter(a => a.artist === route.params.name);
+  return artistData.value && artistData.value.artworks ? artistData.value.artworks : [];
 });
 
 const artistWorkshops = computed(() => {

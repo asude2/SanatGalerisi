@@ -57,6 +57,7 @@ type Artwork struct {
 	Category     string  `json:"category"`
 	IsCampaign   bool    `json:"IsCampaign"`
 	DiscountRate int     `json:"DiscountRate"`
+	IsSold       bool    `json:"issold"`
 }
 type Workshop struct {
 	Id             int     `json:"id"`
@@ -235,7 +236,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ! ESERLERİ GETİRME
+// ! ESERLERİ GETİRME (IsSold Kolonu Eklendi ve Düzeltildi)
 func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, err := sql.Open("sqlserver", connString)
@@ -245,15 +246,15 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	// SORGULAMA: Yeni kolonları (IsCampaign, DiscountRate) SELECT kısmına ekledik
+	// 🚩 ISNULL(aw.IsSold, 0) SELECT sorgusuna eklendi!
 	rows, err := db.Query(`
-			SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl,
-				ISNULL(aw.Description, ''), ISNULL(aw.Category, ''),
-				ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı'),
-				aw.IsCampaign, aw.DiscountRate
-			FROM Artworks aw
-			LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
-	`)
+            SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl,
+                ISNULL(aw.Description, ''), ISNULL(aw.Category, ''),
+                ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı'),
+                ISNULL(aw.IsCampaign, 0), ISNULL(aw.DiscountRate, 0), ISNULL(aw.IsSold, 0)
+            FROM Artworks aw
+            LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
+    `)
 
 	if err != nil {
 		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
@@ -264,11 +265,10 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 	artworks := []Artwork{}
 	for rows.Next() {
 		var a Artwork
-		// SCAN: Yeni kolonları struct'taki karşılıklarına eşliyoruz
 		err := rows.Scan(
 			&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl,
 			&a.Description, &a.Category, &a.Artist,
-			&a.IsCampaign, &a.DiscountRate, // BURASI KRİTİK!
+			&a.IsCampaign, &a.DiscountRate, &a.IsSold, // 🚩 Tarayıcıya satıldı bilgisi artık gidiyor
 		)
 		if err != nil {
 			fmt.Println("Scan hatası:", err)
@@ -279,6 +279,139 @@ func getArtworksHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(artworks)
+}
+
+// ! SATIN ALMA HANDLER (Geliştirilmiş ve Hataları Ayıklanmış Versiyon)
+func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	pathID := strings.TrimPrefix(r.URL.Path, "/buy-artwork/")
+	artworkId, err := strconv.Atoi(pathID)
+	if err != nil || artworkId == 0 {
+		http.Error(w, "Geçersiz Eser ID'si", http.StatusBadRequest)
+		return
+	}
+
+	var data struct {
+		Email         string  `json:"email"`
+		Price         float64 `json:"price"`
+		PaymentMethod string  `json:"paymentMethod"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Geçersiz veri formatı", http.StatusBadRequest)
+		return
+	}
+
+	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
+	if err != nil {
+		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "İşlem başlatılamadı", http.StatusInternalServerError)
+		return
+	}
+
+	// --- ADIM 1: Eser Durumu Kontrolü (OwnerID hatası düzeltildi, ArtistID kullanılıyor) ---
+	var isSold bool
+	var artistId int
+
+	// 🕵️‍♂️ Temizlenen DB şemasına uygun olarak ArtistID çekiliyor
+	checkQuery := "SELECT IsSold, ArtistID FROM Artworks WHERE Id = @p1"
+	err = tx.QueryRow(checkQuery, artworkId).Scan(&isSold, &artistId)
+	if err != nil {
+		tx.Rollback()
+		log.Println("Eser bulunamadı hatası:", err)
+		http.Error(w, "Eser bulunamadı", http.StatusNotFound)
+		return
+	}
+
+	if isSold {
+		tx.Rollback()
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Bu eser çoktan satılmış! 😔"})
+		return
+	}
+
+	// --- ADIM 2: Bakiye Kontrol ve Düşme İşlemi ---
+	var userBalance float64
+	var userId int
+	err = tx.QueryRow("SELECT UserID, ISNULL(Balance, 0) FROM Users WHERE Email = @p1", data.Email).Scan(&userId, &userBalance)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Kullanıcı hesabı doğrulanamadı", http.StatusUnauthorized)
+		return
+	}
+
+	if userBalance < data.Price {
+		tx.Rollback()
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Yetersiz bakiye! 💸 Lütfen bakiye yükleyin."})
+		return
+	}
+
+	// Bakiyeyi düşüyoruz
+	_, err = tx.Exec("UPDATE Users SET Balance = Balance - @p1 WHERE UserID = @p2", data.Price, userId)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Bakiye düşülürken hata oluştu", http.StatusInternalServerError)
+		return
+	}
+
+	// --- ADIM 3: Eseri Satıldı Olarak İşaretle (Onay Bekliyor Aşaması İçin) ---
+	// Not: İrem satın alınca anasayfada gizlenmesi istendiği için geçici olarak IsSold=1 yapıyoruz, Asude onaylayınca kesinleşecek.
+	_, err = tx.Exec("UPDATE Artworks SET IsSold = 1 WHERE Id = @p1", artworkId)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "Eser durumu güncellenemedi", http.StatusInternalServerError)
+		return
+	}
+
+	// --- ADIM 4: Satın Alma Kaydı Oluşturma (SellerID artık ArtistID'nin bağlı olduğu UserID'dir) ---
+	var sellerUserId int
+	err = tx.QueryRow("SELECT UserID FROM Artists WHERE ArtistID = @p1", artistId).Scan(&sellerUserId)
+	if err != nil {
+		sellerUserId = userId // Fallback durumunda işlemi engellemesin diye mevcut kullanıcıyı ata
+	}
+
+	purchaseQuery := `
+        INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice, PaymentMethod, SellerID, Status) 
+        VALUES (@p1, @p2, @p3, @p4, @p5, 'Hazırlanıyor')`
+
+	_, err = tx.Exec(purchaseQuery, data.Email, artworkId, data.Price, data.PaymentMethod, sellerUserId)
+	if err != nil {
+		tx.Rollback()
+		log.Println("Purchase tablosuna yazma hatası:", err)
+		http.Error(w, "Kayıt oluşturulamadı", http.StatusInternalServerError)
+		return
+	}
+
+	// --- ADIM 5: İşlemleri Onayla ---
+	if err = tx.Commit(); err != nil {
+		tx.Rollback()
+		http.Error(w, "İşlem tamamlanamadı", http.StatusInternalServerError)
+		return
+	}
+
+	// --- ADIM 6: Öneri Sistemini Hafızaya Al ---
+	updateCatQuery := `
+            UPDATE Users 
+            SET LastPurchasedCategory = (SELECT Category FROM Artworks WHERE Id = @p1) 
+            WHERE Email = @p2`
+	_, _ = db.Exec(updateCatQuery, artworkId, data.Email)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Başarılı! 🎉"})
 }
 
 // ! PROFİL BİLGİLERİNİ GETİRME
@@ -576,9 +709,16 @@ func checkFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"isFavorite": exists})
 }
 
-// ! FAVORİ LİSTESİNİ GETİRME
+// ! FAVORİ LİSTESİNİ GETİRME (Arkadaşının Kodunun En Kararlı ve Uyumlu Hali)
 func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
 	email := r.URL.Query().Get("email")
+	if email == "" {
+		http.Error(w, "Email parametresi gerekli", http.StatusBadRequest)
+		return
+	}
 
 	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, err := sql.Open("sqlserver", connString)
@@ -588,9 +728,12 @@ func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
+	// 🚩 SQL'den tüm alanları eksiksiz ve struct sırasına göre çekiyoruz
 	query := `
         SELECT aw.Id, aw.Title, aw.ArtistID, aw.Price, aw.ImageUrl, 
-               ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı')
+               ISNULL(aw.Description, ''), ISNULL(aw.Category, ''),
+               ISNULL(ar.ArtistName, 'Bilinmeyen Sanatçı'),
+               ISNULL(aw.IsCampaign, 0), ISNULL(aw.DiscountRate, 0), ISNULL(aw.IsSold, 0)
         FROM Favorites f
         JOIN Artworks aw ON f.ArtworkId = aw.Id
         LEFT JOIN Artists ar ON aw.ArtistID = ar.ArtistID
@@ -598,7 +741,7 @@ func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
     `
 	rows, err := db.Query(query, email)
 	if err != nil {
-		http.Error(w, "Sorgu hatası", http.StatusInternalServerError)
+		http.Error(w, "Sorgu hatası: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -606,14 +749,23 @@ func getUserFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 	var favs []Artwork
 	for rows.Next() {
 		var a Artwork
-		err := rows.Scan(&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl, &a.Artist)
+		// 🚀 BURASI ALTIN DEĞERİNDE: BIT (bool) alanları Go doğrudan yakalıyor, hata vermiyor!
+		err := rows.Scan(
+			&a.ID, &a.Title, &a.ArtistID, &a.Price, &a.ImageUrl,
+			&a.Description, &a.Category, &a.Artist,
+			&a.IsCampaign, &a.DiscountRate, &a.IsSold,
+		)
 		if err != nil {
+			fmt.Println("Favori Scan hatası:", err)
 			continue
 		}
 		favs = append(favs, a)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	if favs == nil {
+		favs = []Artwork{}
+	}
+
 	json.NewEncoder(w).Encode(favs)
 }
 
@@ -993,7 +1145,7 @@ func getSellerOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(orders)
 }
 
-// ! SANATÇI DETAYLARI GETIRME
+// ! SANATÇI DETAYLARI GETIRME (Kusursuz Harf ve Tip Uyumu)
 func getArtistHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
@@ -1008,16 +1160,14 @@ func getArtistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	var artistInfo struct {
-		Name           string `json:"name"`
-		Biography      string `json:"biography"`
-		ArtworksCount  int    `json:"artworksCount"`
-		WorkshopsCount int    `json:"workshopsCount"`
-	}
+	var artistID int
+	var name, biography string
+	var artworksCount, workshopsCount int
 
-	// Sanatçı bilgisini ve eserlerin sayısını ve atölyelerin sayısını getir
+	// 1. ADIM: Sanatçı kimlik ve istatistik bilgilerini çekiyoruz (Hata payını sıfırlamak için ArtistID eklendi)
 	query := `
 		SELECT 
+			a.ArtistID,
 			ISNULL(a.ArtistName, ''), 
 			ISNULL(a.Biography, ''), 
 			COUNT(DISTINCT aw.Id) as ArtworkCount,
@@ -1029,15 +1179,78 @@ func getArtistHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE a.ArtistName = @p1
 		GROUP BY a.ArtistID, a.ArtistName, a.Biography
 	`
-	err = db.QueryRow(query, artistName).Scan(&artistInfo.Name, &artistInfo.Biography, &artistInfo.ArtworksCount, &artistInfo.WorkshopsCount)
+	err = db.QueryRow(query, artistName).Scan(&artistID, &name, &biography, &artworksCount, &workshopsCount)
 
 	if err != nil {
 		http.Error(w, "Sanatçı bulunamadı", http.StatusNotFound)
 		return
 	}
 
+	// 2. ADIM: Sanatçıya ait eserleri, harf/boşluk çakışması yaşamadan direkt netleşen artistID ile çekiyoruz
+	rows, err := db.Query(`
+		SELECT aw.Id, aw.Title, aw.Price, aw.ImageUrl, ISNULL(aw.Category, ''),
+		       ISNULL(aw.IsCampaign, 0), ISNULL(aw.DiscountRate, 0), ISNULL(aw.IsSold, 0)
+		FROM Artworks aw
+		WHERE aw.ArtistID = @p1
+	`, artistID)
+
+	var artworksList []map[string]interface{}
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, discountRate int
+			var price float64
+			var title, imageUrl, category string
+			// SQL Server BIT tipi (true/false) için Go tarafında bool değişkenler kullanıyoruz
+			var isCampaign, isSold bool
+
+			err := rows.Scan(&id, &title, &price, &imageUrl, &category, &isCampaign, &discountRate, &isSold)
+			if err != nil {
+				fmt.Println("Sanatçı Sayfası Eser Scan Hatası:", err)
+				continue
+			}
+
+			// 🔥 Çift yönlü harf korumalı map yapısı (Vue ne ararsa bulacak)
+			artMap := map[string]interface{}{
+				"id":           id,
+				"Id":           id,
+				"title":        title,
+				"Title":        title,
+				"price":        price,
+				"Price":        price,
+				"imageUrl":     imageUrl,
+				"ImageUrl":     imageUrl,
+				"image":        imageUrl,
+				"category":     category,
+				"Category":     category,
+				"artist":       name,
+				"Artist":       name,
+				"IsCampaign":   isCampaign,
+				"iscampaign":   isCampaign,
+				"DiscountRate": discountRate,
+				"discountrate": discountRate,
+				"IsSold":       isSold,
+				"issold":       isSold,
+			}
+			artworksList = append(artworksList, artMap)
+		}
+	}
+
+	if artworksList == nil {
+		artworksList = []map[string]interface{}{}
+	}
+
+	// 3. ADIM: Hem istatistikleri hem de harf uyumlu eser listesini tek pakette birleştiriyoruz
+	response := map[string]interface{}{
+		"name":           name,
+		"biography":      biography,
+		"artworksCount":  artworksCount,
+		"workshopsCount": workshopsCount,
+		"artworks":       artworksList, // Frontend'deki v-for'u besleyecek gıcır gıcır liste!
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(artistInfo)
+	json.NewEncoder(w).Encode(response)
 }
 
 // ! ATÖLYE EKLEME (INSTRUCTOR İÇİN)
@@ -1308,129 +1521,6 @@ func checkCouponHandler(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(map[string]float64{"discount": discount})
 }
-func buyArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. CORS Ayarları
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// 2. URL'den ID Ayıklama (net/http kullandığın için bu kısım şart!)
-	// Örn: /buy-artwork/6 -> Baştaki kısmı silip elinde "6" kalmasını sağlar
-	pathID := strings.TrimPrefix(r.URL.Path, "/buy-artwork/")
-	artworkId, err := strconv.Atoi(pathID)
-	if err != nil || artworkId == 0 {
-		http.Error(w, "Geçersiz Eser ID'si", http.StatusBadRequest)
-		return
-	}
-
-	// 3. Request Body Okuma
-	var data struct {
-		Email         string  `json:"email"`
-		Price         float64 `json:"price"`
-		PaymentMethod string  `json:"paymentMethod"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Geçersiz veri formatı", http.StatusBadRequest)
-		return
-	}
-
-	// 4. Veritabanı Bağlantısı
-	db, err := sql.Open("sqlserver", "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;")
-	if err != nil {
-		http.Error(w, "Veritabanı hatası", http.StatusInternalServerError)
-		return
-	}
-	defer db.Close()
-
-	tx, err := db.Begin()
-	if err != nil {
-		http.Error(w, "İşlem başlatılamadı", http.StatusInternalServerError)
-		return
-	}
-
-	// --- ADIM 1: Eser Durumu ve Satıcı ID'si ---
-	var isSold bool
-	var sellerId int
-
-	// ISNULL(OwnerID, 2) -> Eğer eserin sahibi atanmamışsa hata vermesin diye
-	// varsayılan bir satıcı (Örn: Asude ID: 2) atıyoruz.
-	err = tx.QueryRow("SELECT IsSold, ISNULL(OwnerID, 2) FROM Artworks WHERE Id = @p1", artworkId).Scan(&isSold, &sellerId)
-	if err != nil {
-		tx.Rollback()
-		http.Error(w, "Eser veritabanında bulunamadı", http.StatusNotFound)
-		return
-	}
-
-	if isSold {
-		tx.Rollback()
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Bu eser çoktan satılmış! 😔"})
-		return
-	}
-
-	// --- ADIM 2: Bakiye Kontrolü ---
-	if data.PaymentMethod == "Uygulama Bakiyesi" || data.PaymentMethod == "Cüzdan" {
-		var currentBalance float64
-		err = tx.QueryRow("SELECT ISNULL(Balance, 0) FROM Users WHERE Email = @p1", data.Email).Scan(&currentBalance)
-		if err != nil {
-			tx.Rollback()
-			http.Error(w, "Kullanıcı hesabı bulunamadı", http.StatusNotFound)
-			return
-		}
-
-		if currentBalance < data.Price {
-			tx.Rollback()
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{
-				"message": fmt.Sprintf("Yetersiz bakiye! Cüzdan: %.2f TL, Gereken: %.2f TL", currentBalance, data.Price),
-			})
-			return
-		}
-
-		_, err = tx.Exec("UPDATE Users SET Balance = Balance - @p1 WHERE Email = @p2", data.Price, data.Email)
-		if err != nil {
-			tx.Rollback()
-			http.Error(w, "Bakiye düşülürken hata oluştu", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// --- ADIM 3: Güncelleme ve Kayıt ---
-	// Eseri satıldı yap
-	_, err = tx.Exec("UPDATE Artworks SET IsSold = 1 WHERE Id = @p1", artworkId)
-	if err != nil {
-		tx.Rollback()
-		http.Error(w, "Eser durumu güncellenemedi", http.StatusInternalServerError)
-		return
-	}
-
-	// Satın alma tablosuna işle (SellerID ile beraber)
-	query := "INSERT INTO ArtworkPurchases (UserEmail, ArtworkId, PurchasePrice, PaymentMethod, SellerID, Status) VALUES (@p1, @p2, @p3, @p4, @p5, 'Hazırlanıyor')"
-	_, err = tx.Exec(query, data.Email, artworkId, data.Price, data.PaymentMethod, sellerId)
-
-	if err != nil {
-		tx.Rollback()
-		fmt.Println("CRITICAL SQL ERROR:", err) // Terminalden hatayı izle
-		http.Error(w, "Satın alma kaydı oluşturulamadı", http.StatusInternalServerError)
-		return
-	}
-
-	// 5. İşlemi Onayla
-	if err = tx.Commit(); err != nil {
-		tx.Rollback()
-		http.Error(w, "İşlem tamamlanamadı", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Satın alma işlemi başarıyla tamamlandı! 🎉"})
-}
 
 func ApplyRandomCampaigns(db *sql.DB) error {
 	// 1. Önce tüm indirimleri tertemiz sıfırla
@@ -1492,10 +1582,44 @@ func ApplyRandomCampaigns(db *sql.DB) error {
 	return nil
 }
 
+// SeedCoupons veritabanı sıfırlandığında sistem kuponlarının otomatik eklenmesini sağlar
+func SeedCoupons(db *sql.DB) error {
+	coupons := []struct {
+		Code   string
+		Amount float64
+	}{
+		{"SANAT100", 100.00},
+		{"ILK500", 500.00},
+	}
+
+	for _, c := range coupons {
+		// Kupon daha önce eklenmiş mi kontrol et (Hata vermemesi için)
+		var exists bool
+		checkQuery := "SELECT CASE WHEN EXISTS (SELECT 1 FROM Coupons WHERE Code = @p1) THEN 1 ELSE 0 END"
+		err := db.QueryRow(checkQuery, c.Code).Scan(&exists)
+		if err != nil {
+			return err
+		}
+
+		// Eğer kupon yoksa içeriye yapıştır
+		if !exists {
+			insertQuery := "INSERT INTO Coupons (Code, DiscountAmount, IsActive) VALUES (@p1, @p2, 1)"
+			_, err = db.Exec(insertQuery, c.Code, c.Amount)
+			if err != nil {
+				log.Printf("⚠️ %s kuponu otomatik eklenirken hata: %v", c.Code, err)
+				return err
+			}
+			log.Printf("🎫 Sistem Kuponu Tanımlandı: %s (%v TL)", c.Code, c.Amount)
+		}
+	}
+	return nil
+}
+
 func main() {
 	// 1. Veritabanı bağlantısını kur (Burada kendi connString'in olduğunu varsayıyorum)
 	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;"
 	db, err := sql.Open("sqlserver", connString)
+
 	if err != nil {
 		log.Fatal("Veritabanı bağlantı hatası:", err)
 	}
@@ -1531,8 +1655,7 @@ func main() {
 	mux.HandleFunc("/check-coupon", checkCouponHandler)
 	mux.HandleFunc("/confirm-sale", confirmArtworksSaleHandler)
 	mux.HandleFunc("/seller-orders", getSellerOrdersHandler)
-
-	// --- KRİTİK DOKUNUŞ: KAMPANYALARI BURADA TETİKLİYORUZ ---
+	// --- KRİTİK DOKUNUŞ: KAMPANYALARI VE KUPONLARI BURADA TETİKLİYORUZ ---
 	fmt.Println("Günlük kampanyalar veritabanına işleniyor...")
 	err = ApplyRandomCampaigns(db)
 	if err != nil {
@@ -1540,7 +1663,15 @@ func main() {
 	} else {
 		fmt.Println("✅ Kampanyalar başarıyla sabitlendi!")
 	}
-	// -----------------------------------------------------
+
+	// 🎫 Go backend kuponları server açılmadan hemen önce veritabanına ekliyor
+	err = SeedCoupons(db)
+	if err != nil {
+		log.Printf("⚠️ Kupon ekleme hatası: %v", err)
+	} else {
+		fmt.Println("✅ Sistem kuponları başarıyla doğrulandı/eklendi!")
+	}
+	// -------------------------------------------------------------------
 
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1555,6 +1686,7 @@ func main() {
 		mux.ServeHTTP(w, r)
 	})
 
+	// En sonda server ayağa kalkıyor (Bunun altında başka kod olmamalı)
 	fmt.Println("Server 8080 portunda çalışıyor...")
 	err = http.ListenAndServe(":8080", finalHandler)
 	if err != nil {

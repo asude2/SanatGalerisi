@@ -216,14 +216,12 @@
             <div v-if="favorites && favorites.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <ArtworkCard 
                 v-for="fav in favorites" 
-                :key="fav.id"
-                :id="fav.id"
-                :title="fav.title"
-                :artist="fav.artist"
-                :price="fav.price"
-                :image="fav.imageUrl"
+                :key="fav.id || fav.Id" 
+                :artwork="fav" 
               />
             </div>
+
+
             <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
               <p class="text-gray-400 italic">Henüz bir eseri favorilere eklemediniz.</p>
             </div>

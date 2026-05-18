@@ -21,7 +21,7 @@
               <span class="text-blue-600 font-bold tracking-widest uppercase text-sm">Sanat Eseri Detayı</span>
               <h1 class="text-5xl font-black text-gray-900 mt-2">{{ artwork.title }}</h1>
               <p class="text-2xl text-gray-500 font-medium mt-1 flex items-center gap-4">Sanatçı: <span class="text-gray-800">{{ artwork.artist }}</span>
-                <button @click="showArtistModal = true" class="text-sm bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-bold hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+                <button @click="goToArtistDetail(artwork.artist)" class="text-sm bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-bold hover:bg-blue-600 hover:text-white transition-all shadow-sm">
                   Sanatçıyı Görüntüle 🔍
                 </button>
               </p>
@@ -87,10 +87,11 @@
       <p class="text-2xl text-gray-500 font-medium tracking-tight">Eser detayları yükleniyor...</p>
     </div>
 
-    </div>
+  </div>
 </template>
+
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'; // computed eklendi
+import { ref, onMounted, watch, computed } from 'vue'; 
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 
@@ -105,19 +106,25 @@ const couponCode = ref('');
 const appliedDiscount = ref(0);
 const selectedPaymentMethod = ref('Kredi Kartı');
 
-// --- HESAPLAMA MANTIĞI (YENİ) ---
-// Bu özellik, hem kampanya indirimini hem de kuponu tek tek hesaplar
+// 🚀 YENİ EKLEME: Sanatçının detay sayfasına router.push ile uçuran fonksiyon
+const goToArtistDetail = (artistName) => {
+  if (!artistName || artistName === 'Bilinmeyen Sanatçı') {
+    alert("Sanatçı bilgisi bulunamadı!");
+    return;
+  }
+  router.push(`/artist/${encodeURIComponent(artistName)}`);
+};
+
+// --- HESAPLAMA MANTIĞI ---
 const finalCalculatedPrice = computed(() => {
   if (!artwork.value) return 0;
   
   let price = artwork.value.price;
   
-  // 1. Önce Veritabanındaki Kampanya İndirimini uygula
   if (artwork.value.IsCampaign) {
     price = price * (1 - artwork.value.DiscountRate / 100);
   }
   
-  // 2. Sonra varsa kupon indirimini düş (Eksiye düşmemesi için Max kullandık)
   const final = price - (appliedDiscount.value || 0);
   return Math.max(0, final); 
 });
@@ -142,9 +149,8 @@ const buyArtwork = async () => {
     return;
   }
 
-  // Eserin ID'sini ve HESAPLANMIŞ fiyatını alıyoruz
   const artworkId = artwork.value.id; 
-  const priceToPay = finalCalculatedPrice.value; // Artık kampanya dahil fiyat gidiyor!
+  const priceToPay = finalCalculatedPrice.value; 
 
   if (!confirm(`${artwork.value.title} eserini ${priceToPay.toLocaleString()} ₺ karşılığında satın almak istiyor musunuz?`)) return;
 
@@ -152,12 +158,21 @@ const buyArtwork = async () => {
     const response = await axios.post(`http://localhost:8080/buy-artwork/${artworkId}`, {
       email: userEmail,
       artworkId: artworkId,
-      price: priceToPay, // Backend'e indirimli fiyatı yolluyoruz
+      price: priceToPay, 
       paymentMethod: selectedPaymentMethod.value || "Cüzdan"
     });
 
+    if (artwork.value && artwork.value.category) {
+        localStorage.setItem('lastPurchasedCategory', artwork.value.category);
+        console.log("Kategori hafızaya alındı:", artwork.value.category);
+    }
+
     alert("Satın alma başarılı! 🎨");
-    router.push('/profile');
+    localStorage.setItem('lastPurchasedCategory', artwork.value.category);
+
+    window.location.href = "/";
+    router.push('/'); 
+    
   } catch (error) {
     console.error("Hata detayı:", error.response);
     const status = error.response?.status;
@@ -189,7 +204,6 @@ watch(showArtistModal, (newVal) => {
 
 onMounted(async () => {
   try {
-    // Eserleri getirirken backend'den yeni kolonların geldiğinden eminiz
     const response = await axios.get('http://localhost:8080/artworks');
     artwork.value = response.data.find(a => a.id === parseInt(route.params.id));
     
