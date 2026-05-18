@@ -62,6 +62,7 @@ CREATE TABLE Workshops (
     CONSTRAINT FK_Workshop_Instructor FOREIGN KEY (InstructorID) REFERENCES Users(UserID)
 );
 
+
 CREATE TABLE Favorites (
     Id INT PRIMARY KEY IDENTITY(1,1),
     UserEmail NVARCHAR(100) NOT NULL, 
@@ -122,12 +123,18 @@ GO
 --
 
 
+--atölye rezervasyonlarını sıfırlama
+USE [SanatProjesi];
+GO
 
+-- 1. Tüm Atölye Kayıtlarını ve Rezervasyon Geçmişini Tamamen Temizle
+DELETE FROM [dbo].[WorkshopEnrollments];
 
+-- 2. Rezervasyon ID sayacını sıfırla (Yeni kayıtlar tekrar 1'den başlasın kanka)
+DBCC CHECKIDENT ('[dbo].[WorkshopEnrollments]', RESEED, 0);
 
-
-
-
+PRINT 'Atölye rezervasyonları ve başvuru geçmişi başarıyla sıfırlandı! 🚀🎨';
+GO
 
 
 

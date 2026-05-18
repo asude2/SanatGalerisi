@@ -1,42 +1,38 @@
 <template>
   <div v-if="recommendedArtworks.length > 0" class="px-10 mt-10 mb-14 animate-in fade-in slide-in-from-top-4 duration-1000">
     <div class="relative bg-[#1a3a3a] rounded-[45px] p-10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] overflow-hidden border border-white/5 flex flex-col lg:flex-row items-center gap-10">
-         
-      
-      <h2 class="text-[#e9c46a] text-4xl font-black tracking-tight leading-tight">
-        {{ userLastCategory }} Severlere <br/> 
-        <span class="text-white">Ekstra %5 İndirim!</span>
-      </h2>
-      <p class="text-gray-300 text-lg leading-relaxed opacity-80">
-        {{ userLastCategory }} kategorisindeki tutkunu fark ettik. <br/>
-        Kalan eserlerde sana özel indirim tanımladık!
-      </p>
-
       
       <div class="lg:w-1/3 z-10 text-left">
         <div class="flex items-center gap-2 mb-4">
           <span class="text-[#e9c46a] text-2xl animate-pulse">✦</span>
           <h2 class="text-[#e9c46a] text-4xl font-black tracking-tight leading-tight">
             {{ userLastCategory }} Tutkuna <br/> 
-            <span class="text-white">Özel Seçkiler</span>
+            <span class="text-white">Ekstra %5 İndirim!</span>
           </h2>
         </div>
         <p class="text-gray-300 text-lg leading-relaxed opacity-80">
-          En son <strong>{{ userLastCategory }}</strong> eserleriyle ilgilendin. <br/>
-          Senin için seçtiğimiz yeni fırsatlara göz at!
+          En son <strong>{{ userLastCategory }}</strong> eserleriyle ilgilendiğini fark ettik. <br/>
+          Senin için seçtiğimiz bu özel seçkilerde şansını kaçırma!
         </p>
       </div>
 
       <div class="lg:w-2/3 w-full z-10">
         <div class="flex gap-6 overflow-x-auto pb-4 no-scrollbar">
-          <div v-for="art in recommendedArtworks" :key="art.Id || art.id" class="min-w-[240px] group">
+          
+          <div 
+            v-for="art in recommendedArtworks" 
+            :key="art.Id || art.id" 
+            @click="router.push({ path: `/artwork/${art.Id || art.id}`, query: { extraDiscount: 'true' } })"
+            class="min-w-[240px] group cursor-pointer"
+          >
             <div class="bg-[#244a4a] p-3 rounded-[30px] border border-white/10 transition-all duration-500 group-hover:border-[#e9c46a]/50 group-hover:-translate-y-2 shadow-xl">
                <ArtworkCard 
                  :artwork="art" 
-                 class="!shadow-none !bg-transparent border-none scale-95 group-hover:scale-100 transition-transform" 
+                 class="!shadow-none !bg-transparent border-none scale-95 group-hover:scale-100 transition-transform pointer-events-none" 
                />
             </div>
           </div>
+
         </div>
       </div>
 

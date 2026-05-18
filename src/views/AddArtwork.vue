@@ -37,13 +37,13 @@
             <label class="block text-gray-700 font-bold mb-2 ml-1">Kategori</label>
             <select 
               v-model="artwork.category" 
-              class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-green-50 transition-all text-lg appearance-none"
+              class="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-4 focus:ring-green-50 transition-all text-lg appearance-none bg-white"
             >
-            <option value="Manzara">Manzara</option>
-            <option value="Rönesans">Rönesans</option>
-            <option value="Realizm">Realizm</option>
-            <option value="Natürmort">Natürmort</option>
-            <option value="Modern Sanat">Modern Sanat</option>
+              <option value="Manzara">Manzara</option>
+              <option value="Rönesans">Rönesans</option>
+              <option value="Realizm">Realizm</option>
+              <option value="Natürmort">Natürmort</option>
+              <option value="Modern Sanat">Modern Sanat</option>
             </select>
           </div>
         </div>
@@ -71,7 +71,7 @@
 
         <button 
           type="submit" 
-          class="w-full bg-galeri-yesil text-white font-black py-5 rounded-2xl shadow-xl shadow-green-100 hover:scale-[1.02] transition-transform text-xl mt-4"
+          class="w-full bg-galeri-yesil text-white font-black py-5 rounded-2xl shadow-xl shadow-green-100 hover:scale-[1.02] transition-transform text-xl mt-4 cursor-pointer"
         >
           Esere Hayat Ver ve Yayınla ✨
         </button>
@@ -90,7 +90,7 @@ const router = useRouter()
 const artwork = ref({
   title: '',
   price: 0,
-  category: 'Tablo',
+  category: 'Manzara', // 🚀 DÜZELTME: Seçeneklerde 'Tablo' olmadığı için varsayılanı 'Manzara' yaptık kanka
   imageUrl: '',
   description: ''
 })
@@ -98,13 +98,23 @@ const artwork = ref({
 const handleSubmit = async () => {
   try {
     const userEmail = localStorage.getItem('userEmail')
+    
+    // 🛡️ GÜVENCE: Oturum açık değilse backend'i boş yere yormuyoruz
+    if (!userEmail) {
+      alert("Oturum açmış kullanıcı e-posta bilgisi bulunamadı! Lütfen önce giriş yapın. 👤");
+      return;
+    }
+
+    // 🎯 F12 ÖN YÜZ RADARI: Gönder butonuna bastığınız an konsola bakın kanka, katili burada yakalayacağız!
+    console.log("🔥 [FRONTEND RADARI] Şu an backend'e gönderilen aktif e-posta:", userEmail);
+
     const response = await axios.post('http://localhost:8080/add-artwork', {
       title: artwork.value.title,
       price: parseFloat(artwork.value.price), 
       category: artwork.value.category,
       imageUrl: artwork.value.imageUrl,
       description: artwork.value.description,
-      email: userEmail
+      email: userEmail // Tarayıcı hafızasındaki e-posta gidiyor kanka
     });
 
     if (response.status === 201) {
@@ -113,7 +123,7 @@ const handleSubmit = async () => {
     }
   } catch (error) {
     console.error("Eser ekleme hatası:", error);
-    alert("Eser eklenirken bir hata oluştu. Lütfen tekrar deneyin.");
+    alert("Eser eklenirken bir hata oluştu: " + (error.response?.data || "Lütfen tekrar deneyin."));
   }
 }
 </script>

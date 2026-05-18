@@ -504,14 +504,45 @@ const passwords = ref({
 const sellerOrders = ref([]);
 const workshopOrders = ref([]); // Gelen atölye başvurularını tutacak state
 
-// Asude'nin (Satıcı) siparişlerini getirir
+
+// 🛍️ ESER SİPARİŞLERİNİ ÇEKER
+// 🛍️ 1. ESER SİPARİŞLERİNİ E-POSTA İLE ÇEKER (KUSURSUZ SÜRÜM)
 const fetchSellerOrders = async () => {
   try {
-    const sellerId = localStorage.getItem('artistId') || 2; 
-    const response = await axios.get(`http://localhost:8080/seller-orders?sellerId=${sellerId}`);
+    // 🚀 Doğrudan tıkır tıkır çalışan e-postayı çekiyoruz kanka:
+    const userEmail = localStorage.getItem('userEmail'); 
+    
+    // Eski 'userId' kontrolünü ve o erkenden bitiren sinsi 'return'ü tamamen sildik!
+    if (!userEmail) {
+      console.warn("⚠️ Giriş yapmış kullanıcı e-postası bulunamadı!");
+      return;
+    }
+
+    // Backend'e tertemiz e-posta parametresiyle gidiyoruz:
+    const response = await axios.get(`http://localhost:8080/seller-orders?email=${userEmail}`);
     sellerOrders.value = response.data || [];
   } catch (error) {
     console.error("Siparişler çekilemedi:", error);
+  }
+};
+
+// 🏫 2. ATÖLYE BAŞVURULARINI ÇEKER
+// 🏫 ATÖLYE REZERVASYON BAŞVURULARINI E-POSTA İLE ÇEKER
+const fetchWorkshopOrders = async () => {
+  try {
+    // Hafızadan gıcır gıcır çalışan aktif e-postayı çekiyoruz:
+    const userEmail = localStorage.getItem('userEmail');
+    
+    if (!userEmail) {
+      console.warn("⚠️ Giriş yapmış kullanıcı e-postası bulunamadı!");
+      return;
+    }
+
+    // 🚀 URL'in sonuna sellerId=2 tuzağını silip email=${userEmail} dinamiğini çakıyoruz kanka!
+    const response = await axios.get(`http://localhost:8080/seller-workshops-orders?email=${userEmail}`);
+    workshopOrders.value = response.data || [];
+  } catch (error) {
+    console.error("Atölye başvuruları çekilemedi:", error);
   }
 };
 
@@ -528,16 +559,7 @@ const confirmSale = async (purchaseId) => {
   }
 };
 
-// Eğitmenin atölyelerine gelen rezervasyon başvurularını çeker
-const fetchWorkshopOrders = async () => {
-  try {
-    const sellerId = localStorage.getItem('artistId') || 2;
-    const response = await axios.get(`http://localhost:8080/seller-workshops-orders?sellerId=${sellerId}`);
-    workshopOrders.value = response.data || [];
-  } catch (error) {
-    console.error("Atölye başvuruları çekilemedi:", error);
-  }
-};
+
 
 // Atölye Başvurusunu Onaylama Fonksiyonu
 const confirmWorkshopOrder = async (enrollmentId) => {

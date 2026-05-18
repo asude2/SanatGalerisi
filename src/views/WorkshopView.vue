@@ -9,15 +9,51 @@
     </header>
 
     <main class="container mx-auto px-6">
-      <div class="mb-8">
-        <label class="block text-gray-700 font-semibold mb-2" for="workshopSearch">Atölye ara</label>
-        <input
-          id="workshopSearch"
-          v-model="searchTerm"
-          type="text"
-          placeholder="Başlık ya da eğitmen adı girin"
-          class="w-full rounded-xl border border-gray-300 px-4 py-3 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
-        />
+      
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+        
+        <div class="flex-1 max-w-xl w-full">
+          <label class="block text-gray-700 font-semibold mb-2 ml-1" for="workshopSearch">Atölye ara</label>
+          <input
+            id="workshopSearch"
+            v-model="searchTerm"
+            type="text"
+            placeholder="Başlık ya da eğitmen adı girin"
+            class="w-full rounded-2xl border-2 border-gray-100 bg-white px-5 py-3 shadow-sm outline-none focus:border-blue-500 transition-all text-gray-700"
+          />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 w-full md:w-auto justify-start md:justify-end">
+          
+          <div class="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-gray-100 shadow-sm">
+            <span class="text-xs font-black text-gray-400 uppercase tracking-widest">Sırala:</span>
+            <select 
+              v-model="sortCriterion" 
+              class="bg-transparent text-gray-700 font-bold outline-none cursor-pointer text-sm pr-2 focus:text-blue-600 transition-colors"
+            >
+              <option value="default">Varsayılan</option>
+              <option value="tarih">📅 Tarih</option>
+              <option value="price">💰 Ücret</option>
+              <option value="capacity">👥 Kontenjan</option>
+            </select>
+          </div>
+
+          <div v-if="sortCriterion === 'price' || sortCriterion === 'capacity'" class="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-gray-100 shadow-sm animate-fade-in">
+            <span class="text-xs font-black text-gray-400 uppercase tracking-widest">Yön:</span>
+            <select 
+              v-model="sortDirection" 
+              class="bg-transparent text-gray-700 font-bold outline-none cursor-pointer text-sm pr-2 focus:text-blue-600 transition-colors"
+            >
+              <option value="asc">Artan (Düşükten Yükseğe)</option>
+              <option value="desc">Azalan (Yüksekten Düşüğe)</option>
+            </select>
+          </div>
+
+          <div v-if="sortCriterion === 'tarih'" class="text-xs font-bold text-orange-600 bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 shadow-sm">
+            ✨ En yakın etkinlikler en üstte gösteriliyor.
+          </div>
+        </div>
+
       </div>
 
       <div v-if="processedWorkshops.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -35,39 +71,10 @@
           :image="ws.image"
         />
       </div>
+      
       <div v-else class="text-center py-20 text-gray-400">
         {{ workshops.length > 0 ? 'Aramanıza uygun atölye bulunamadı.' : 'Şu an aktif bir atölye bulunmamaktadır...' }}
       </div>
-
-<div class="flex flex-wrap justify-end items-center gap-4 mb-8">
-  <div class="flex items-center gap-2">
-    <span class="text-sm font-bold text-gray-500 uppercase">Sırala:</span>
-    <select 
-      v-model="sortCriterion" 
-      class="p-3 rounded-2xl border-2 border-gray-100 bg-white text-gray-700 font-bold outline-none focus:border-orange-500 transition-all shadow-sm"
-    >
-      <option value="default">Varsayılan</option>
-      <option value="tarih">📅 Tarih</option>
-      <option value="price">💰 Ücret</option>
-      <option value="capacity">👥 Kontenjan</option>
-    </select>
-  </div>
-
-      <div v-if="sortCriterion === 'price' || sortCriterion === 'capacity'" class="flex items-center gap-2 animate-fade-in">
-        <span class="text-sm font-bold text-gray-500 uppercase">Yön:</span>
-        <select 
-          v-model="sortDirection" 
-          class="p-3 rounded-2xl border-2 border-gray-100 bg-white text-gray-700 font-bold outline-none focus:border-orange-500 transition-all shadow-sm"
-        >
-          <option value="asc">Artan (Düşükten Yükseğe)</option>
-          <option value="desc">Azalan (Yüksekten Düşüğe)</option>
-        </select>
-      </div>
-
-      <div v-if="sortCriterion === 'tarih'" class="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100">
-        ✨ En yakın etkinlikler en üstte gösteriliyor.
-      </div>
-    </div>
 
     </main>
   </div>
