@@ -48,6 +48,7 @@ const handleLogin = async () => {
       localStorage.setItem('userToken', response.data.token) 
       localStorage.setItem('userRole', response.data.role);
       localStorage.setItem('userEmail', loginData.value.email) 
+      localStorage.setItem('userId', response.data.userId); // userId'yi kaydet
       
       alert('Giriş başarılı!')
       router.push('/')

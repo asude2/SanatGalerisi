@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 py-12 px-6">
     <div v-if="workshop" class="max-w-4xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden">
       <div class="relative h-96">
-        <img :src="workshop.image" class="w-full h-full object-cover" />
+        <img :src="workshop.image" @error="(e) => e.target.src = 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800'" class="w-full h-full object-cover" />
         <button @click="router.back()" class="absolute top-6 left-6 bg-white/90 p-3 rounded-full shadow-lg cursor-pointer">
           ⬅️ Geri Dön
         </button>

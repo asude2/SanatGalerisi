@@ -33,13 +33,19 @@
             <p class="text-gray-500 font-medium">{{ user.email }} • <span class="text-blue-600">{{ user.role }}</span></p>
             <p v-if="user.biography" class="mt-4 text-gray-600 leading-relaxed max-w-2xl">{{ user.biography }}</p>
           </div>
+
+          <!-- Hızlı İşlemler (Sadece Eğitmenler İçin) -->
+          <div v-if="user.role === 'Instructor'" class="mt-8 flex gap-4">
+             <router-link to="/add-artwork" class="px-6 py-3 bg-green-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-green-100 hover:bg-green-700 transition-all">+ Eser Ekle</router-link>
+             <router-link to="/add-workshop" class="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">+ Atölye Oluştur</router-link>
+          </div>
         </div>
       </div>
 
       <!-- Navigasyon Sekmeleri -->
       <div class="flex gap-2 mb-8 bg-gray-200/50 p-1.5 rounded-2xl w-fit overflow-x-auto">
         <button 
-          v-for="tab in tabs" 
+          v-for="tab in visibleTabs" 
           :key="tab.id"
           @click="activeTab = tab.id"
           class="px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
@@ -87,6 +93,44 @@
           </div>
         </div>
 
+        <!-- Atölye Kayıtlarım -->
+        <div v-if="activeTab === 'enrollments'" class="space-y-4">
+          <div v-for="enrollment in enrollments" :key="enrollment.id" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-6">
+            <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-2xl">🎨</div>
+            <div class="flex-1">
+              <h3 class="font-bold text-gray-900">{{ enrollment.workshopTitle }}</h3>
+              <p class="text-sm text-gray-500">{{ enrollment.location }} • {{ enrollment.reservedDate }}</p>
+              <p class="text-xs text-blue-600 font-bold mt-1">{{ enrollment.participantCount }} Katılımcı</p>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] font-black uppercase px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">Kayıtlı</span>
+            </div>
+          </div>
+          <div v-if="enrollments.length === 0" class="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
+             <p class="text-4xl mb-4">📅</p>
+             <p class="text-gray-400 font-bold">Henüz bir atölyeye kayıt olmadınız.</p>
+          </div>
+        </div>
+
+        <!-- Atölyelerim (Sadece Eğitmenler) -->
+        <div v-if="activeTab === 'my_workshops'" class="space-y-4">
+          <div v-for="ws in myWorkshops" :key="ws.id" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-6">
+            <img :src="ws.image" class="w-20 h-20 rounded-2xl object-cover" />
+            <div class="flex-1">
+              <h3 class="font-bold text-gray-900">{{ ws.title }}</h3>
+              <p class="text-sm text-gray-500">{{ ws.location }} • {{ ws.price }} ₺</p>
+              <p class="text-xs text-blue-600 font-bold mt-1">Kapasite: {{ ws.capacity }} Kişi</p>
+            </div>
+            <div class="text-right">
+              <button @click="deleteWorkshop(ws.id)" class="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">🗑️</button>
+            </div>
+          </div>
+          <div v-if="myWorkshops.length === 0" class="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
+             <p class="text-4xl mb-4">🎨</p>
+             <p class="text-gray-400 font-bold">Henüz bir atölye oluşturmadınız.</p>
+          </div>
+        </div>
+
         <!-- Karşılaştırma Analizlerim -->
         <div v-if="activeTab === 'comparisons'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div v-for="comp in comparisons" :key="comp.comparisonId" class="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all group">
@@ -119,6 +163,26 @@
           </div>
         </div>
 
+        <!-- Destek Taleplerim -->
+        <div v-if="activeTab === 'tickets'" class="space-y-4">
+          <div v-for="ticket in tickets" :key="ticket.ticketId" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-6">
+            <div class="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-xl">🎫</div>
+            <div class="flex-1">
+              <h3 class="font-bold text-gray-900">{{ ticket.subject }}</h3>
+              <p class="text-xs text-gray-400">{{ formatDate(ticket.createdAt) }} • {{ ticket.supportType }}</p>
+            </div>
+            <div class="text-right">
+              <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-black uppercase">{{ translateStatus(ticket.status) }}</span>
+              <router-link :to="`/support/${ticket.ticketId}`" class="block text-xs font-bold text-blue-600 mt-2 hover:underline">Detaylar →</router-link>
+            </div>
+          </div>
+          <div v-if="tickets.length === 0" class="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
+             <p class="text-4xl mb-4">🎧</p>
+             <p class="text-gray-400 font-bold">Henüz bir destek talebiniz yok.</p>
+             <router-link to="/support" class="text-blue-600 font-bold mt-2 hover:underline block">Yeni talep oluştur →</router-link>
+          </div>
+        </div>
+
         <!-- Profil Düzenle -->
         <div v-if="activeTab === 'edit'" class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm max-w-2xl">
           <h2 class="text-2xl font-black text-gray-900 mb-8">Profil Bilgilerini Güncelle</h2>
@@ -147,7 +211,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
@@ -156,6 +220,9 @@ const user = ref(null);
 const favorites = ref([]);
 const purchases = ref([]);
 const comparisons = ref([]);
+const enrollments = ref([]);
+const tickets = ref([]);
+const myWorkshops = ref([]);
 const activeTab = ref('favorites');
 const editingId = ref(null);
 const editTitle = ref('');
@@ -163,9 +230,16 @@ const editTitle = ref('');
 const tabs = [
   { id: 'favorites', label: 'Favorilerim' },
   { id: 'orders', label: 'Siparişlerim' },
+  { id: 'enrollments', label: 'Atölye Kayıtlarım' },
+  { id: 'my_workshops', label: 'Atölyelerim', instructorOnly: true },
   { id: 'comparisons', label: 'Analizlerim' },
+  { id: 'tickets', label: 'Destek Taleplerim' },
   { id: 'edit', label: 'Düzenle' }
 ];
+
+const visibleTabs = computed(() => {
+  return tabs.filter(tab => !tab.instructorOnly || (user.value && user.value.role === 'Instructor'));
+});
 
 const editUser = ref({ firstName: '', lastName: '', biography: '' });
 
@@ -191,6 +265,30 @@ const fetchPurchases = async () => {
   try {
     const res = await axios.get(`http://localhost:8080/user-purchases?email=${email}`);
     purchases.value = res.data || [];
+  } catch (e) { console.error(e); }
+};
+
+const fetchEnrollments = async () => {
+  const email = localStorage.getItem('userEmail');
+  try {
+    const res = await axios.get(`http://localhost:8080/user-enrollments?email=${email}`);
+    enrollments.value = res.data || [];
+  } catch (e) { console.error(e); }
+};
+
+const fetchTickets = async () => {
+  const token = localStorage.getItem('userToken');
+  try {
+    const res = await axios.get('http://localhost:8080/tickets', { headers: { Authorization: `Bearer ${token}` } });
+    tickets.value = res.data || [];
+  } catch (e) { console.error(e); }
+};
+
+const fetchMyWorkshops = async () => {
+  const email = localStorage.getItem('userEmail');
+  try {
+    const res = await axios.get(`http://localhost:8080/my-workshops?email=${email}`);
+    myWorkshops.value = res.data || [];
   } catch (e) { console.error(e); }
 };
 
@@ -233,6 +331,14 @@ const deleteComparison = async (id) => {
   } catch (e) { alert("Silinemedi."); }
 };
 
+const deleteWorkshop = async (id) => {
+  if (!confirm("Bu atölyeyi silmek istediğinize emin misiniz?")) return;
+  try {
+    await axios.delete(`http://localhost:8080/delete-workshop?id=${id}`);
+    fetchMyWorkshops();
+  } catch (e) { alert("Silinemedi."); }
+};
+
 const viewComparison = (comp) => {
   localStorage.setItem('compareType', comp.targetType);
   const ids = comp.targetIds.split(',').map(id => parseInt(id));
@@ -245,12 +351,23 @@ const logout = () => {
   router.push('/login');
 };
 
-const formatDate = (d) => new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' }).format(new Date(d));
+const translateStatus = (status) => {
+  const map = { 'Open': 'Açık', 'Açık': 'Açık', 'Responded': 'Yanıtlandı', 'Beklemede': 'Yanıtlandı', 'Closed': 'Çözüldü', 'Çözüldü': 'Çözüldü' };
+  return map[status] || status;
+};
+
+const formatDate = (d) => {
+  if (!d) return '';
+  return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' }).format(new Date(d));
+};
 
 onMounted(() => {
   fetchUser();
   fetchFavorites();
   fetchPurchases();
+  fetchEnrollments();
   fetchComparisons();
+  fetchTickets();
+  fetchMyWorkshops();
 });
 </script>

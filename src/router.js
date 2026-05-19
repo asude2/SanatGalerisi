@@ -14,6 +14,7 @@ import Artists from './views/ArtistsView.vue'
 import SupportView from './views/SupportView.vue'
 import SupportTicketDetail from './views/SupportTicketDetail.vue'
 import AdminDashboard from './views/AdminDashboard.vue'
+import CompareView from './views/CompareView.vue'
 
 const routes = [
   { 
@@ -89,6 +90,11 @@ const routes = [
     path: '/admin/dashboard',
     name: 'AdminDashboard',
     component: AdminDashboard
+  },
+  {
+    path: '/compare',
+    name: 'Compare',
+    component: CompareView
   }
 ]
 
