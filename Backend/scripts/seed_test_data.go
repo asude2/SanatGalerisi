@@ -9,8 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func main() {
-	connString := "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;TrustServerCertificate=true;"
+func seedTestData() {
 	db, err := sql.Open("sqlserver", connString)
 	if err != nil {
 		log.Fatal("Veritabanı bağlantı hatası:", err)

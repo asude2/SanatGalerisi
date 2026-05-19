@@ -9,9 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var connString = "server=localhost;database=SanatProjesi;trusted_connection=yes;encrypt=disable;TrustServerCertificate=true;"
-
-func main() {
+func seedCleanData() {
 	db, err := sql.Open("sqlserver", connString)
 	if err != nil {
 		log.Fatal("Bağlantı hatası:", err)

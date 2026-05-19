@@ -114,7 +114,6 @@ import axios from 'axios'
 import { jwtDecode } from 'jwt-decode'
 import EntityStats from '../components/EntityStats.vue'
 import CommentSection from '../components/CommentSection.vue'
-import { jwtDecode } from 'jwt-decode' 
 
 const route = useRoute()
 const router = useRouter()

@@ -1523,9 +1523,10 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(int)
 	isVerified := false
 
-	if c.TargetType == "Artwork" {
+	switch c.TargetType {
+	case "Artwork":
 		isVerified = checkPurchase(userID, c.TargetID)
-	} else if c.TargetType == "Workshop" {
+	case "Workshop":
 		isVerified = checkEnrollment(userID, c.TargetID)
 		// Mantıksal Hata 2 Fix: Atölye yorumu için katılım şartı
 		if !isVerified {
@@ -1554,9 +1555,10 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 	defer db.Close()
 
 	orderClause := "ORDER BY c.CreatedAt DESC"
-	if sortBy == "highest" {
+	switch sortBy {
+	case "highest":
 		orderClause = "ORDER BY c.Rating DESC, c.CreatedAt DESC"
-	} else if sortBy == "most_helpful" {
+	case "most_helpful":
 		orderClause = "ORDER BY (c.Upvotes - ISNULL(c.Downvotes, 0)) DESC, c.CreatedAt DESC"
 	}
 
@@ -1569,7 +1571,7 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 			(SELECT TOP 1 ru.UserRole FROM CommentReplies cr JOIN Users ru ON cr.UserID = ru.UserID WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as ReplierRole
 		FROM Comments c 
 		JOIN Users u ON c.UserID = u.UserID 
-		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %%s`, orderClause)
+		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %s`, orderClause)
 
 	rows, err := db.Query(query, targetID, targetType)
 	if err != nil {
@@ -2055,7 +2057,6 @@ func main() {
 	mux.HandleFunc("/admin/tickets/update", isAdmin(updateTicketStatusHandler))
 	mux.HandleFunc("/admin/dashboard-stats", isAdmin(adminDashboardStatsHandler))
 	mux.HandleFunc("/admin/popular-artworks", isAdmin(getPopularArtworksHandler))
-	mux.HandleFunc("/artists", getArtistsHandler)
 	mux.HandleFunc("/profile/update-balance", updateBalanceHandler)
 	mux.HandleFunc("/check-coupon", checkCouponHandler)
 	mux.HandleFunc("/confirm-sale", confirmArtworksSaleHandler)
