@@ -302,7 +302,7 @@ const saveComparison = async () => {
   try {
     const ids = items.value.map(i => i.id).join(',');
     await axios.post('http://localhost:8080/comparisons/save', 
-      { title: comparisonTitle.value, targetType: targetType.value, targetIds: ids }, 
+      { title: comparisonTitle.value, targetType: targetType.value, targetIDs: ids }, 
       { headers: { Authorization: `Bearer ${token}` } }
     );
     alert("Karşılaştırma kaydedildi! Profilinizden ulaşabilirsiniz. 💾");

@@ -3,15 +3,24 @@
     <!-- Eser Görseli -->
     <div class="relative overflow-hidden h-64">
       <img :src="image" :alt="title" class="w-full h-full object-cover group-hover:scale-110 transition-duration-500" />
-      <button 
-        @click.stop="toggleFavorite" 
-        class="absolute top-4 right-4 p-3 rounded-full shadow-lg transition-all cursor-pointer"
-        :class="isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:text-red-500'"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" :fill="isFavorite ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-        </svg>
-      </button>
+      <div class="absolute top-4 right-4 flex flex-col gap-2">
+        <button 
+          @click.stop="toggleFavorite" 
+          class="p-3 rounded-full shadow-lg transition-all cursor-pointer"
+          :class="isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:text-red-500'"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" :fill="isFavorite ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+        </button>
+        <button 
+          @click.stop="addToCompare" 
+          class="p-3 bg-white/90 rounded-full shadow-lg transition-all cursor-pointer hover:bg-blue-600 hover:text-white text-gray-400"
+          title="Karşılaştır"
+        >
+          ⚖️
+        </button>
+      </div>
     </div>
     <!-- Eser Bilgileri -->
     <div class="p-6">
@@ -21,7 +30,7 @@
           <p class="text-gray-500 text-sm italic">{{ artist }}</p>
         </div>
         <div class="bg-green-50 text-galeri-yesil px-3 py-1 rounded-lg text-sm font-bold">
-          4.8 ⭐
+          {{ rating }} ⭐
         </div>
       </div>
 
@@ -44,6 +53,7 @@ import { jwtDecode } from 'jwt-decode';
 const props = defineProps(['id', 'title', 'artist', 'price', 'image']);
 const router = useRouter();
 const isFavorite = ref(false);
+const rating = ref('0.0');
 
 const getEmailFromToken = () => {
   const token = localStorage.getItem('userToken');
@@ -73,10 +83,40 @@ onMounted(async () => {
       console.error("Favori durumu kontrol hatası:", error);
     }
   }
+
+  if (props.id) {
+    try {
+      const statsRes = await axios.get(`http://localhost:8080/entity-stats?targetId=${props.id}&targetType=Artwork`);
+      if (statsRes.data && statsRes.data.avgRating !== undefined) {
+        rating.value = Number(statsRes.data.avgRating).toFixed(1);
+      }
+    } catch (err) {
+      console.error("Rating çekilemedi:", err);
+    }
+  }
 });
 
 const goToDetail = () => {
   router.push(`/artwork/${props.id}`);
+};
+
+const addToCompare = () => {
+  const currentList = JSON.parse(localStorage.getItem('compareList') || '[]');
+  const currentType = localStorage.getItem('compareType') || 'Artwork';
+
+  if (currentType !== 'Artwork') {
+    if (!confirm('Karşılaştırma listenizdeki atölyeler temizlenecek. Devam edilsin mi?')) return;
+    localStorage.setItem('compareList', JSON.stringify([props.id]));
+    localStorage.setItem('compareType', 'Artwork');
+  } else {
+    if (!currentList.includes(props.id)) {
+      if (currentList.length >= 4) return alert('En fazla 4 ürünü karşılaştırabilirsiniz!');
+      currentList.push(props.id);
+      localStorage.setItem('compareList', JSON.stringify(currentList));
+      localStorage.setItem('compareType', 'Artwork');
+    }
+  }
+  router.push('/compare');
 };
 
 const toggleFavorite = async () => {
