@@ -613,7 +613,9 @@ func getUserTicketsHandler(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&t.TicketID, &t.Subject, &t.Message, &t.SupportType, &t.Status, &t.CreatedAt, &t.UpdatedAt)
 		tickets = append(tickets, t)
 	}
-	if tickets == nil { tickets = []SupportTicket{} }
+	if tickets == nil {
+		tickets = []SupportTicket{}
+	}
 	json.NewEncoder(w).Encode(tickets)
 }
 
@@ -628,7 +630,9 @@ func getAllTicketsHandler(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&t.TicketID, &t.UserID, &t.Subject, &t.Message, &t.SupportType, &t.Status, &t.CreatedAt, &t.UpdatedAt)
 		tickets = append(tickets, t)
 	}
-	if tickets == nil { tickets = []SupportTicket{} }
+	if tickets == nil {
+		tickets = []SupportTicket{}
+	}
 	json.NewEncoder(w).Encode(tickets)
 }
 
@@ -636,7 +640,7 @@ func sendTicketMessageHandler(w http.ResponseWriter, r *http.Request) {
 	var msg SupportMessage
 	json.NewDecoder(r.Body).Decode(&msg)
 	userID := r.Context().Value(userIDKey).(int)
-	
+
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
 
@@ -670,7 +674,9 @@ func getTicketMessagesHandler(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&m.MessageID, &m.TicketID, &m.SenderID, &m.SenderName, &m.SenderRole, &m.Message, &m.CreatedAt)
 		msgs = append(msgs, m)
 	}
-	if msgs == nil { msgs = []SupportMessage{} }
+	if msgs == nil {
+		msgs = []SupportMessage{}
+	}
 	json.NewEncoder(w).Encode(msgs)
 }
 
@@ -691,7 +697,7 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&c)
 	userID := r.Context().Value(userIDKey).(int)
 	isVerified := false
-	
+
 	if c.TargetType == "Artwork" {
 		isVerified = checkPurchase(userID, c.TargetID)
 	} else if c.TargetType == "Workshop" {
@@ -702,7 +708,7 @@ func addCommentHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	
+
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
 	db.Exec("INSERT INTO Comments (UserID, TargetID, TargetType, CommentText, Rating, IsVerified) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)", userID, c.TargetID, c.TargetType, c.CommentText, c.Rating, isVerified)
@@ -757,8 +763,8 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 		var c Comment
 		var reply, replierName, replierRole sql.NullString
 		err := rows.Scan(
-			&c.CommentID, &c.UserID, &c.UserName, &c.CommentText, &c.Rating, 
-			&c.Upvotes, &c.Downvotes, &c.IsVerified, &c.CreatedAt, 
+			&c.CommentID, &c.UserID, &c.UserName, &c.CommentText, &c.Rating,
+			&c.Upvotes, &c.Downvotes, &c.IsVerified, &c.CreatedAt,
 			&reply, &replierName, &replierRole,
 		)
 		if err != nil {
@@ -776,7 +782,7 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		comments = append(comments, c)
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(comments)
 }
@@ -825,7 +831,10 @@ func voteCommentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func addCommentReplyHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct { CommentID int `json:"commentId"`; ReplyText string `json:"replyText"` }
+	var req struct {
+		CommentID int    `json:"commentId"`
+		ReplyText string `json:"replyText"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	userID := r.Context().Value(userIDKey).(int)
 	role := r.Context().Value(userRoleKey).(string)
@@ -882,9 +891,11 @@ func getEntityStatsHandler(w http.ResponseWriter, r *http.Request) {
 		db.QueryRow("SELECT ISNULL(SUM(ParticipantCount), 0) FROM WorkshopEnrollments WHERE WorkshopId = @p1", targetID).Scan(&reservations)
 		var capacity int
 		db.QueryRow("SELECT Capacity FROM Workshops WHERE Id = @p1", targetID).Scan(&capacity)
-		if capacity > 0 { occupancy = (float64(reservations) / float64(capacity)) * 100 }
+		if capacity > 0 {
+			occupancy = (float64(reservations) / float64(capacity)) * 100
+		}
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{ "views": viewCount, "likes": likeCount, "comments": commentCount, "avgRating": avgRating, "reservations": reservations, "occupancy": occupancy })
+	json.NewEncoder(w).Encode(map[string]interface{}{"views": viewCount, "likes": likeCount, "comments": commentCount, "avgRating": avgRating, "reservations": reservations, "occupancy": occupancy})
 }
 
 func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -895,7 +906,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	db.QueryRow("SELECT COUNT(*) FROM Workshops").Scan(&totalWorkshops)
 	db.QueryRow("SELECT COUNT(*) FROM Users").Scan(&totalUsers)
 	db.QueryRow("SELECT COUNT(*) FROM SupportTickets WHERE Status != 'Çözüldü'").Scan(&totalTickets)
-	json.NewEncoder(w).Encode(map[string]interface{}{ "totalArtworks": totalArtworks, "totalWorkshops": totalWorkshops, "totalUsers": totalUsers, "activeTickets": totalTickets })
+	json.NewEncoder(w).Encode(map[string]interface{}{"totalArtworks": totalArtworks, "totalWorkshops": totalWorkshops, "totalUsers": totalUsers, "activeTickets": totalTickets})
 }
 
 func getPopularArtworksHandler(w http.ResponseWriter, r *http.Request) {
@@ -908,7 +919,7 @@ func getPopularArtworksHandler(w http.ResponseWriter, r *http.Request) {
 		FROM Artworks a
 		JOIN Artists ar ON a.ArtistID = ar.ArtistID
 		ORDER BY ViewCount DESC`
-	
+
 	rows, err := db.Query(query)
 	if err != nil {
 		http.Error(w, "Veri çekilemedi", 500)
@@ -951,12 +962,17 @@ func getComparisonsHandler(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&c.ComparisonID, &c.Title, &c.TargetType, &c.TargetIDs, &c.CreatedAt)
 		results = append(results, c)
 	}
-	if results == nil { results = []Comparison{} }
+	if results == nil {
+		results = []Comparison{}
+	}
 	json.NewEncoder(w).Encode(results)
 }
 
 func updateComparisonTitleHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct { ComparisonID int `json:"comparisonId"`; Title string `json:"title"` }
+	var req struct {
+		ComparisonID int    `json:"comparisonId"`
+		Title        string `json:"title"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 	userID := r.Context().Value(userIDKey).(int)
 	db, _ := sql.Open("sqlserver", connString)
@@ -976,7 +992,7 @@ func deleteComparisonHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("/register", registerHandler)
 	mux.HandleFunc("/login", loginHandler)
 	mux.HandleFunc("/artworks", getArtworksHandler)
