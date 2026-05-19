@@ -58,7 +58,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-2">
               <label class="text-sm font-bold text-gray-600 ml-1">Katılımcı Sayısı</label>
-              <select v-model="reservation.participantCount" class="w-full p-4 bg-white rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all shadow-sm">
+              <select v-model.number="reservation.participantCount" class="w-full p-4 bg-white rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all shadow-sm">
                 <option v-for="n in 10" :key="n" :value="n">{{ n }} Kişi</option>
               </select>
             </div>
@@ -69,11 +69,27 @@
                 class="w-full p-4 bg-white rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all shadow-sm"
               >
                 <option value="" disabled selected>Lütfen bir tarih seçin...</option>
-                <option v-for="date in workshop.availableDates?.split(',')" :key="date" :value="date">
-                  {{ date }}
+                <option v-for="date in workshop.availableDates?.split(',')" :key="date" :value="date.trim()">
+                  {{ date.trim() }}
                 </option>
               </select>
             </div>
+          </div>
+
+          <div class="space-y-2 pt-2">
+            <label class="text-sm font-bold text-gray-600 ml-1">Ödeme Yöntemi</label>
+            <select v-model="selectedPaymentMethod" class="w-full p-4 bg-white rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all shadow-sm">
+              <option value="Kredi Kartı">Kredi Kartı</option>
+              <option value="Uygulama Bakiyesi">Uygulama Bakiyesi</option>
+            </select>
+          </div>
+
+          <div class="p-4 bg-white rounded-xl border border-blue-200 flex justify-between items-center mt-4 shadow-sm">
+            <div>
+              <span class="text-xs text-blue-600 font-bold uppercase block">Toplam Ödenecek Tutar</span>
+              <span class="text-3xl font-black text-blue-900">{{ totalWorkshopPrice.toLocaleString() }} ₺</span>
+            </div>
+            <span class="text-xs text-gray-400 font-medium">({{ reservation.participantCount }} x {{ workshop.price }} ₺)</span>
           </div>
         </div>
 
@@ -81,7 +97,7 @@
           @click="enroll"
           class="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 cursor-pointer active:scale-[0.98] mb-12"
         >
-          Rezervasyon Oluştur ✨
+          Ödeme Yap ve Rezervasyon Oluştur 💳
         </button>
 
         <!-- Yorumlar Bölümü -->
@@ -98,6 +114,7 @@ import axios from 'axios'
 import { jwtDecode } from 'jwt-decode'
 import EntityStats from '../components/EntityStats.vue'
 import CommentSection from '../components/CommentSection.vue'
+import { jwtDecode } from 'jwt-decode' 
 
 const route = useRoute()
 const router = useRouter()
@@ -109,6 +126,14 @@ const reservation = ref({
 })
 
 const today = computed(() => new Date().toISOString().split('T')[0])
+// 🚀 YENİ: Ödeme yöntemi reactive statetimiz (Varsayılan: Kredi Kartı)
+const selectedPaymentMethod = ref('Kredi Kartı')
+
+// Katılımcı sayısı ile ham fiyatı çarpan computed property
+const totalWorkshopPrice = computed(() => {
+  if (!workshop.value) return 0
+  return workshop.value.price * reservation.value.participantCount
+})
 
 onMounted(async () => {
   try {
@@ -132,19 +157,26 @@ const enroll = async () => {
     return
   }
 
+  const confirmMessage = `${workshop.value.title} atölyesine ${reservation.value.participantCount} kişi için [${selectedPaymentMethod.value}] kullanılarak toplam ${totalWorkshopPrice.value.toLocaleString()} ₺ ödeme yapılacaktır. Onaylıyor musunuz?`
+  if (!confirm(confirmMessage)) return
+
   try {
     const decoded = jwtDecode(token)
-    const response = await axios.post('http://localhost:8080/workshops/enroll', {
+    // 🚀 Geliştirilen payload: Seçilen ödeme yöntemini de backend'e paslıyoruz
+    const response = await axios.post('http://localhost:8080/enroll-workshop-payment', {
       email: decoded.email,
       workshopId: workshop.value.id,
-      participantCount: reservation.value.participantCount,
-      reservedDate: reservation.value.date
+      participantCount: parseInt(reservation.value.participantCount),
+      reservedDate: reservation.value.date,
+      paymentMethod: selectedPaymentMethod.value
     })
 
     alert(response.data.message)
     router.push('/workshops')
+    alert(response.data.message || "Rezervasyon ve ödeme başarılı! 🎉")
+    router.push('/profile') 
   } catch (error) {
-    alert(error.response?.data || "Rezervasyon sırasında bir hata oluştu.")
+    alert(error.response?.data?.message || "Rezervasyon sırasında bir hata oluştu veya bakiyeniz yetersiz! 💸")
   }
 }
 </script>

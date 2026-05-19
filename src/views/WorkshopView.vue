@@ -9,21 +9,58 @@
     </header>
 
     <main class="container mx-auto px-6">
-      <div class="mb-8">
-        <label class="block text-gray-700 font-semibold mb-2" for="workshopSearch">Atölye ara</label>
-        <input
-          id="workshopSearch"
-          v-model="searchTerm"
-          type="text"
-          placeholder="Başlık ya da eğitmen adı girin"
-          class="w-full rounded-xl border border-gray-300 px-4 py-3 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
-        />
+      
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+        
+        <div class="flex-1 max-w-xl w-full">
+          <label class="block text-gray-700 font-semibold mb-2 ml-1" for="workshopSearch">Atölye ara</label>
+          <input
+            id="workshopSearch"
+            v-model="searchTerm"
+            type="text"
+            placeholder="Başlık ya da eğitmen adı girin"
+            class="w-full rounded-2xl border-2 border-gray-100 bg-white px-5 py-3 shadow-sm outline-none focus:border-blue-500 transition-all text-gray-700"
+          />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 w-full md:w-auto justify-start md:justify-end">
+          
+          <div class="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-gray-100 shadow-sm">
+            <span class="text-xs font-black text-gray-400 uppercase tracking-widest">Sırala:</span>
+            <select 
+              v-model="sortCriterion" 
+              class="bg-transparent text-gray-700 font-bold outline-none cursor-pointer text-sm pr-2 focus:text-blue-600 transition-colors"
+            >
+              <option value="default">Varsayılan</option>
+              <option value="tarih">📅 Tarih</option>
+              <option value="price">💰 Ücret</option>
+              <option value="capacity">👥 Kontenjan</option>
+            </select>
+          </div>
+
+          <div v-if="sortCriterion === 'price' || sortCriterion === 'capacity'" class="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-gray-100 shadow-sm animate-fade-in">
+            <span class="text-xs font-black text-gray-400 uppercase tracking-widest">Yön:</span>
+            <select 
+              v-model="sortDirection" 
+              class="bg-transparent text-gray-700 font-bold outline-none cursor-pointer text-sm pr-2 focus:text-blue-600 transition-colors"
+            >
+              <option value="asc">Artan (Düşükten Yükseğe)</option>
+              <option value="desc">Azalan (Yüksekten Düşüğe)</option>
+            </select>
+          </div>
+
+          <div v-if="sortCriterion === 'tarih'" class="text-xs font-bold text-orange-600 bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 shadow-sm">
+            ✨ En yakın etkinlikler en üstte gösteriliyor.
+          </div>
+        </div>
+
       </div>
 
-      <div v-if="filteredWorkshops.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div v-if="processedWorkshops.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <WorkshopCard 
-          v-for="ws in filteredWorkshops" 
+          v-for="ws in processedWorkshops"
           :key="ws.id" 
+          :artwork="ws"
           :id="ws.id"
           :title="ws.title"
           :instructorName="ws.instructorName"
@@ -34,9 +71,11 @@
           :image="ws.image"
         />
       </div>
+      
       <div v-else class="text-center py-20 text-gray-400">
         {{ workshops.length > 0 ? 'Aramanıza uygun atölye bulunamadı.' : 'Şu an aktif bir atölye bulunmamaktadır...' }}
       </div>
+
     </main>
   </div>
 </template>
@@ -51,15 +90,55 @@ const router = useRouter()
 const workshops = ref([])
 const searchTerm = ref('')
 
-const filteredWorkshops = computed(() => {
-  const search = searchTerm.value.trim().toLowerCase()
-  if (!search) return workshops.value
+const sortCriterion = ref('default') 
+const sortDirection = ref('asc')     
 
-  return workshops.value.filter(ws => {
+// --- ŞOV BURADA: Hem Filtreleme Hem Sıralama Tek Fonksiyonda ---
+const processedWorkshops = computed(() => {
+  if (!workshops.value) return []
+  
+  // 1. Önce Arama (Filter) işlemini yapalım
+  const search = searchTerm.value.trim().toLowerCase()
+  let result = workshops.value.filter(ws => {
     const title = String(ws.title || '').toLowerCase()
     const instructor = String(ws.instructorName || '').toLowerCase()
     return title.includes(search) || instructor.includes(search)
   })
+
+  // 2. Sonra Arama sonuçlarını Sıralayalım (Sort)
+  if (sortCriterion.value === 'price') {
+    result.sort((a, b) => {
+      return sortDirection.value === 'asc' ? a.price - b.price : b.price - a.price
+    })
+  } 
+  else if (sortCriterion.value === 'capacity') {
+    result.sort((a, b) => {
+      return sortDirection.value === 'asc' ? a.capacity - b.capacity : b.capacity - a.capacity
+    })
+  } 
+  else if (sortCriterion.value === 'tarih') {
+    result.sort((a, b) => {
+      // split(',')[0] yaparak ilk tarihi baz alıyoruz
+      const dateA = new Date(a.availableDates?.split(',')[0] || '9999-12-31')
+      const dateB = new Date(b.availableDates?.split(',')[0] || '9999-12-31')
+      return dateA - dateB 
+    })
+  }
+
+  else if (sortCriterion.value === 'tarih') {
+    result.sort((a, b) => {
+      // Tarihleri güvenli bir şekilde objeye çeviriyoruz
+      // availableDates içinde birden fazla tarih varsa ilkini alıyoruz
+      const dateA = new Date(a.availableDates?.split(',')[0]).getTime() || 0
+      const dateB = new Date(b.availableDates?.split(',')[0]).getTime() || 0
+
+      // sortDirection 'asc' ise En Yakın (Küçük olan tarih) başta
+      // sortDirection 'desc' ise En Uzak (Büyük olan tarih) başta
+      return sortDirection.value === 'asc' ? dateA - dateB : dateB - dateA
+    })
+  }
+
+  return result
 })
 
 onMounted(async () => {
