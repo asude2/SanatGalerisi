@@ -49,6 +49,7 @@ type Artwork struct {
 	ImageUrl    string  `json:"imageUrl"`
 	Description string  `json:"description"`
 	Category    string  `json:"category"`
+	Rating      float64 `json:"rating"`
 }
 
 type Workshop struct {
@@ -61,6 +62,7 @@ type Workshop struct {
 	Price          float64 `json:"price"`
 	ImageUrl       string  `json:"image"`
 	AvailableDates string  `json:"availableDates"`
+	Rating         float64 `json:"rating"`
 }
 
 type SupportTicket struct {
@@ -738,7 +740,7 @@ func getCommentsHandler(w http.ResponseWriter, r *http.Request) {
 			(SELECT TOP 1 ru.UserRole FROM CommentReplies cr JOIN Users ru ON cr.UserID = ru.UserID WHERE cr.CommentID = c.CommentID ORDER BY cr.CreatedAt DESC) as ReplierRole
 		FROM Comments c 
 		JOIN Users u ON c.UserID = u.UserID 
-		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %%s`, orderClause)
+		WHERE c.TargetID = @p1 AND c.TargetType = @p2 %s`, orderClause)
 
 	rows, err := db.Query(query, targetID, targetType)
 	if err != nil {
@@ -849,18 +851,28 @@ func logInteractionHandler(w http.ResponseWriter, r *http.Request) {
 	db, _ := sql.Open("sqlserver", connString)
 	defer db.Close()
 
-	// Beğeni ise eşsizlik ve toggle kontrolü yap
-	if logReq.InteractionType == "Like" && logReq.UserID != nil {
-		var exists int
-		db.QueryRow("SELECT COUNT(*) FROM InteractionLogs WHERE UserID = @p1 AND TargetID = @p2 AND TargetType = @p3 AND InteractionType = 'Like'", logReq.UserID, logReq.TargetID, logReq.TargetType).Scan(&exists)
-		if exists > 0 {
-			// Zaten beğenilmişse beğeniyi kaldır (Toggle)
-			db.Exec("DELETE FROM InteractionLogs WHERE UserID = @p1 AND TargetID = @p2 AND TargetType = @p3 AND InteractionType = 'Like'", logReq.UserID, logReq.TargetID, logReq.TargetType)
-			w.WriteHeader(200)
+	// Beğeni işlemi ise:
+	if logReq.InteractionType == "Like" {
+		if logReq.UserID == nil || *logReq.UserID == 0 {
+			http.Error(w, "Beğenmek için giriş yapmalısınız.", 401)
 			return
 		}
+
+		// Zaten beğenmiş mi kontrol et
+		var exists int
+		db.QueryRow("SELECT COUNT(*) FROM InteractionLogs WHERE UserID = @p1 AND TargetID = @p2 AND TargetType = @p3 AND InteractionType = 'Like'", logReq.UserID, logReq.TargetID, logReq.TargetType).Scan(&exists)
+
+		if exists > 0 {
+			// Varsa SİL (Toggle - Beğeniyi geri al)
+			db.Exec("DELETE FROM InteractionLogs WHERE UserID = @p1 AND TargetID = @p2 AND TargetType = @p3 AND InteractionType = 'Like'", logReq.UserID, logReq.TargetID, logReq.TargetType)
+			w.WriteHeader(200)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Beğeni kaldırıldı"})
+			return
+		}
+		// Yoksa aşağıda INSERT edilecek
 	}
 
+	// View (Görüntülenme) her zaman kaydedilir, Like ise sadece yoksa buraya düşer
 	db.Exec("INSERT INTO InteractionLogs (UserID, TargetID, TargetType, InteractionType) VALUES (@p1, @p2, @p3, @p4)", logReq.UserID, logReq.TargetID, logReq.TargetType, logReq.InteractionType)
 	w.WriteHeader(200)
 }
