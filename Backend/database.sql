@@ -96,7 +96,7 @@ CREATE TABLE WorkshopEnrollments (
     ParticipantCount INT DEFAULT 1, 
     ReservedDate NVARCHAR(100) NOT NULL,    
     CreatedAt DATETIME DEFAULT GETDATE(),
-    Status NVARCHAR(50) DEFAULT 'Onay Bekliyor',
+    Status NVARCHAR(50) DEFAULT N'Onay Bekliyor',
     CONSTRAINT FK_Enrollment_Workshop FOREIGN KEY (WorkshopId) REFERENCES Workshops(Id)
 );
 
@@ -107,8 +107,8 @@ CREATE TABLE ArtworkPurchases (
     ArtworkId INT NOT NULL,
     SellerID INT NULL,
     PurchasePrice DECIMAL(18, 2) NOT NULL, 
-    Status NVARCHAR(50) DEFAULT 'Hazırlanıyor', 
-    PaymentMethod NVARCHAR(50) DEFAULT 'Kredi Kartı',
+    Status NVARCHAR(50) DEFAULT N'Hazırlanıyor', 
+    PaymentMethod NVARCHAR(50) DEFAULT N'Kredi Kartı',
     CreatedAt DATETIME DEFAULT GETDATE(),
     CONSTRAINT FK_Purchase_Artwork FOREIGN KEY (ArtworkId) REFERENCES Artworks(Id),
     CONSTRAINT FK_Purchase_Seller FOREIGN KEY (SellerID) REFERENCES Users(UserID)
@@ -145,7 +145,7 @@ CREATE TABLE SupportTickets (
     Subject NVARCHAR(200) NOT NULL,
     Message NVARCHAR(MAX) NOT NULL,
     SupportType NVARCHAR(100),
-    Status NVARCHAR(50) DEFAULT 'Açık',
+    Status NVARCHAR(50) DEFAULT N'Açık',
     CreatedAt DATETIME DEFAULT GETDATE(),
     UpdatedAt DATETIME DEFAULT GETDATE(),
     CONSTRAINT FK_Ticket_User FOREIGN KEY (UserID) REFERENCES Users(UserID)

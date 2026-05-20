@@ -1460,7 +1460,7 @@ func sendTicketMessageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db.Exec("INSERT INTO SupportMessages (TicketID, SenderID, Message) VALUES (@p1, @p2, @p3)", msg.TicketID, userID, msg.Message)
-	db.Exec("UPDATE SupportTickets SET UpdatedAt = GETDATE(), Status = 'Açık' WHERE TicketID = @p1", msg.TicketID)
+	db.Exec("UPDATE SupportTickets SET UpdatedAt = GETDATE(), Status = N'Açık' WHERE TicketID = @p1", msg.TicketID)
 	w.WriteHeader(201)
 }
 
@@ -1709,7 +1709,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	db.QueryRow("SELECT COUNT(*) FROM Artworks").Scan(&totalArtworks)
 	db.QueryRow("SELECT COUNT(*) FROM Workshops").Scan(&totalWorkshops)
 	db.QueryRow("SELECT COUNT(*) FROM Users").Scan(&totalUsers)
-	db.QueryRow("SELECT COUNT(*) FROM SupportTickets WHERE Status != 'Çözüldü'").Scan(&totalTickets)
+	db.QueryRow("SELECT COUNT(*) FROM SupportTickets WHERE Status != N'Çözüldü'").Scan(&totalTickets)
 	json.NewEncoder(w).Encode(map[string]interface{}{"totalArtworks": totalArtworks, "totalWorkshops": totalWorkshops, "totalUsers": totalUsers, "activeTickets": totalTickets})
 }
 

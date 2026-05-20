@@ -1,8 +1,8 @@
 <template>
   <div 
-    class="bg-white rounded-3xl shadow-sm hover:shadow-xl border border-gray-100 overflow-hidden transition-all duration-300 group relative" 
-    :class="{'cursor-not-allowed opacity-90': isSold, 'cursor-pointer': !isSold}"
-    @click="!isSold && goToDetail()"
+    class="bg-white rounded-3xl shadow-sm hover:shadow-xl border border-gray-100 overflow-hidden transition-all duration-300 group relative cursor-pointer" 
+    :class="{'opacity-90': isSold}"
+    @click="goToDetail()"
   >
     <div v-if="isSold" class="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
       <div class="rotate-[-15deg] border-8 border-red-600/80 px-8 py-3 rounded-2xl bg-white/10 backdrop-blur-sm shadow-2xl">
@@ -86,11 +86,11 @@
       </div>
 
       <button 
-        :disabled="isSold"
-        :class="isSold ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 cursor-pointer'"
+        @click.stop="goToDetail()"
+        :class="isSold ? 'bg-gray-500 hover:bg-gray-600 cursor-pointer' : 'bg-green-600 hover:bg-green-700 cursor-pointer'"
         class="w-full text-white px-4 py-3 rounded-xl font-bold transition-all shadow-md"
       >
-        {{ isSold ? 'BU ESER SAHİPLENDİRİLDİ' : 'Detayları Gör' }}
+        {{ isSold ? 'SATILDI - Detayları Gör' : 'Detayları Gör' }}
       </button>
     </div>
   </div>
@@ -155,16 +155,16 @@ const loadCompareList = () => {
 };
 
 const isInCompareList = computed(() => {
-  const artworkId = props.artwork.Id || props.artwork.id;
+  const artworkId = props.artwork.Id ?? props.artwork.id;
   return compareList.value.includes(artworkId);
 });
 
 onMounted(async () => {
   loadCompareList();
   const email = getEmailFromToken();
-  const artworkId = props.artwork.Id || props.artwork.id;
+  const artworkId = props.artwork.Id ?? props.artwork.id;
   
-  if (email && artworkId) {
+  if (email && artworkId !== undefined && artworkId !== null) {
     try {
       const response = await axios.get('http://localhost:8080/favorites/check', {
         params: { email: email, artworkId: artworkId }
@@ -176,7 +176,7 @@ onMounted(async () => {
   }
 
   // Fetch avg rating; fall back to artwork-provided rating or 0.0
-  if (artworkId) {
+  if (artworkId !== undefined && artworkId !== null) {
     try {
       const statsRes = await axios.get(`http://localhost:8080/entity-stats?targetId=${artworkId}&targetType=Artwork`);
       if (statsRes.data && statsRes.data.avgRating !== undefined && statsRes.data.avgRating > 0) {
@@ -205,8 +205,8 @@ onMounted(async () => {
 });
 
 const goToDetail = () => {
-  const artworkId = props.artwork.Id || props.artwork.id;
-  if (artworkId) {
+  const artworkId = props.artwork.Id ?? props.artwork.id;
+  if (artworkId !== undefined && artworkId !== null) {
     router.push(`/artwork/${artworkId}`);
   } else {
     console.error("Hata: Eser ID'si bulunamadı!", props.artwork);
@@ -215,8 +215,8 @@ const goToDetail = () => {
 
 // 🚀 ENES'İN SEPETE EKLEME TERAZİSİ (Senin paket nesne mimarinle harmanlandı)
 const addToCompare = () => {
-  const artworkId = props.artwork.Id || props.artwork.id;
-  if (!artworkId) return;
+  const artworkId = props.artwork.Id ?? props.artwork.id;
+  if (artworkId === undefined || artworkId === null) return;
 
   const currentList = JSON.parse(localStorage.getItem('compareList') || '[]');
   const currentType = localStorage.getItem('compareType') || 'Artwork';
@@ -245,7 +245,7 @@ const addToCompare = () => {
 
 const toggleFavorite = async () => {
   const email = getEmailFromToken();
-  const artworkId = props.artwork.Id || props.artwork.id;
+  const artworkId = props.artwork.Id ?? props.artwork.id;
 
   if (!email) {
     alert("Lütfen önce giriş yapın! 👤");

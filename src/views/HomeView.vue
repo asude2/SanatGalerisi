@@ -21,8 +21,8 @@
           
           <div 
             v-for="art in recommendedArtworks" 
-            :key="art.Id || art.id" 
-            @click="router.push({ path: `/artwork/${art.Id || art.id}`, query: { extraDiscount: 'true' } })"
+            :key="art.Id ?? art.id" 
+            @click="router.push({ path: `/artwork/${art.Id ?? art.id}`, query: { extraDiscount: 'true' } })"
             class="min-w-[240px] group cursor-pointer"
           >
             <div class="bg-[#244a4a] p-3 rounded-[30px] border border-white/10 transition-all duration-500 group-hover:border-[#e9c46a]/50 group-hover:-translate-y-2 shadow-xl">
@@ -37,7 +37,7 @@
       </div>
 
       <div class="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-white/5 to-transparent pointer-events-none"></div>
-      <div class="absolute -left-20 -bottom-20 w-80 h-80 bg-[#2a9d8f]/10 rounded-full blur-[100px]"></div>
+      <div class="absolute -left-20 -bottom-20 w-80 h-80 bg-[#2a9d8f]/10 rounded-full blur-[100px] pointer-events-none"></div>
     </div>
   </div>
 
@@ -127,7 +127,7 @@
       <div v-if="filteredArtworks.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
         <ArtworkCard 
           v-for="art in filteredArtworks" 
-          :key="art.Id || art.id"
+          :key="art.Id ?? art.id"
           :artwork="art" 
         />
       </div>
@@ -183,11 +183,8 @@ const recommendedArtworks = computed(() => {
       const cat = a.category || a.Category;
       const isSameCategory = cat === userLastCategory.value;
       
-      // 2. Satılmamış olmalı (En önemli kısım!)
-      const sold = a.issold !== undefined ? a.issold : a.IsSold;
-      const isNotSold = sold != 1 && sold != true;
-
-      return isSameCategory && isNotSold;
+      // 2. Satılanlar da anasayfada görünsün (müşteri isteği)
+      return isSameCategory;
     })
     .map(a => {
       // 🔥 ŞOV BURADA: Her esere o kişiye özel %5 ekstra indirim tanımlıyoruz
@@ -211,13 +208,8 @@ const recommendedArtworks = computed(() => {
 const filteredArtworks = computed(() => {
   if (!artworks.value || artworks.value.length === 0) return [];
   
-  // ADIM 1: Satılanları eliyoruz
-  let result = artworks.value.filter(a => {
-    const soldStatus = a.issold !== undefined ? a.issold : 
-                       a.IsSold !== undefined ? a.IsSold : 
-                       a.is_sold !== undefined ? a.is_sold : false;
-    return soldStatus != 1 && soldStatus != true && soldStatus != "1";
-  });
+  // ADIM 1: Tüm eserleri alıyoruz (Satılanlar da anasayfada görünsün)
+  let result = [...artworks.value];
 
   // ADIM 2: Arama
   const search = searchQuery.value?.toLowerCase().trim();
