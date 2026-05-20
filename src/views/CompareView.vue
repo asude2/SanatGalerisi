@@ -296,19 +296,36 @@ const prepareSave = () => {
 };
 
 const saveComparison = async () => {
-  const token = localStorage.getItem('userToken');
+  const token = localStorage.getItem('userToken') || localStorage.getItem('token');
   if (!comparisonTitle.value) return alert("Lütfen bir isim verin!");
 
   try {
     const ids = items.value.map(i => i.id).join(',');
-    await axios.post('http://localhost:8080/comparisons/save', 
-      { title: comparisonTitle.value, targetType: targetType.value, targetIds: ids }, 
+    
+    const payload = {
+      title: comparisonTitle.value,
+      targetType: targetType.value,
+      targetIds: ids
+    };
+
+    const response = await axios.post('http://localhost:8080/comparisons/save', 
+      payload, 
       { headers: { Authorization: `Bearer ${token}` } }
     );
-    alert("Karşılaştırma kaydedildi! Profilinizden ulaşabilirsiniz. 💾");
+    
+    alert("Karşılaştırma başarıyla kaydedildi! Profilinden ulaşabilirsin kanka. 💾⚖️");
     showSaveModal.value = false;
     comparisonTitle.value = '';
-  } catch (e) { alert("Kaydedilemedi."); }
+    
+    // Kayıt biter bitmez profile yönlendir
+    router.push('/profile');
+
+  } catch (e) { 
+    console.error("Analiz veritabanına yazılırken backend hata döndü:", e);
+    // 🔥 KESİN ÇÖZÜM: Backend'den gelen asıl SQL hatasını Alert ile ekrana basıyoruz!
+    const errMsg = e.response?.data?.message || "Bilinmeyen Sunucu Hatası";
+    alert("🚨 KAYIT BAŞARISIZ! Backend'in verdiği cevap:\n\n" + errMsg); 
+  }
 };
 
 onMounted(() => {

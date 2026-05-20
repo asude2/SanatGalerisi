@@ -14,6 +14,8 @@ import Artists from './views/ArtistsView.vue'
 import SupportView from './views/SupportView.vue'
 import SupportTicketDetail from './views/SupportTicketDetail.vue'
 import AdminDashboard from './views/AdminDashboard.vue'
+// 🚀 MERGE GÜVENCESİ: Senin o canavar kıyaslama sayfanı rotaya dahil ediyoruz kanka!
+import CompareView from './views/CompareView.vue'
 
 const routes = [
   { 
@@ -89,6 +91,12 @@ const routes = [
     path: '/admin/dashboard',
     name: 'AdminDashboard',
     component: AdminDashboard
+  },
+  // 🚀 MERGE GÜVENCESİ: Analizlerim sekmesinin tıkladığında rotayı bulabilmesi için patika mühürlendi kanka!
+  {
+    path: '/compare',
+    name: 'Compare',
+    component: CompareView
   }
 ]
 
@@ -98,7 +106,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('userToken'); // Tarayıcıdaki bilekliği kontrol et
+  // Hem senin kullandığın hem Enes'in mühürlediği token anahtarlarını garantiye alıyoruz kanka
+  const token = localStorage.getItem('userToken') || localStorage.getItem('token'); 
   
   // Eğer kullanıcı giriş yapmamışsa ve 'login' veya 'register' dışında bir yere gitmeye çalışıyorsa
   if (!token && to.path !== '/login' && to.path !== '/register') {

@@ -29,15 +29,20 @@
           
           <div>
             <h1 class="text-3xl font-black text-gray-900">{{ user.firstName }} {{ user.lastName }}</h1>
-            <p class="text-gray-500 font-medium">{{ user.email }} • <span class="text-blue-600">{{ user.userRole || user.role }}</span></p>
+            <p class="text-gray-500 font-medium">{{ user.email }} • <span class="text-blue-600">{{ userRole }}</span></p>
             <p v-if="user.biography" class="mt-4 text-gray-600 leading-relaxed max-w-2xl">{{ user.biography }}</p>
+          </div>
+
+          <div v-if="userRole === 'Instructor' || userRole === 'Artist'" class="mt-8 flex gap-4">
+             <router-link to="/add-artwork" class="px-6 py-3 bg-green-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-green-100 hover:bg-green-700 transition-all">+ Eser Ekle</router-link>
+             <router-link to="/add-workshop" class="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">+ Atölye Oluştur</router-link>
           </div>
         </div>
       </div>
 
       <div class="flex gap-2 mb-8 bg-gray-200/50 p-1.5 rounded-2xl w-fit overflow-x-auto">
         <button 
-          v-for="tab in tabs" 
+          v-for="tab in visibleTabs" 
           :key="tab.id"
           @click="activeTab = tab.id"
           class="px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
@@ -65,20 +70,101 @@
         </div>
 
         <div v-if="activeTab === 'orders'" class="space-y-4">
-          <div v-for="order in purchases" :key="order.id" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-6">
-            <img :src="order.image" class="w-20 h-20 rounded-2xl object-cover" />
-            <div class="flex-1">
-              <h3 class="font-bold text-gray-900">{{ order.title }}</h3>
-              <p class="text-sm text-gray-500">{{ formatDate(order.date) }}</p>
+          <div class="bg-blue-50 border-2 border-blue-100 rounded-2xl p-6 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+              <div class="p-3 bg-blue-600 rounded-xl text-white shadow-lg text-2xl">💰</div>
+              <div>
+                <p class="text-sm font-bold text-blue-600 uppercase tracking-wider">Hesap Bakiyeniz</p>
+                <h3 class="text-3xl font-black text-blue-900">
+                  {{ user?.balance ? user.balance.toLocaleString() : '0' }} TL
+                </h3>
+              </div>
             </div>
-            <div class="text-right">
-              <p class="font-black text-gray-900">{{ order.price }} ₺</p>
-              <span class="text-[10px] font-black uppercase px-2 py-1 bg-green-100 text-green-700 rounded-lg">Tamamlandı</span>
+            <button @click="addBalance" class="px-6 py-3 bg-white border-2 border-blue-600 text-blue-600 font-bold rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+              + Bakiye Yükle
+            </button>
+          </div>
+
+          <div class="border-t-2 border-gray-100 pt-8">
+            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">🛍️ Satın Aldığım Eserler Detay</h3>
+            <div v-if="boughtArtworks.length > 0" class="space-y-4">
+              <div v-for="item in boughtArtworks" :key="item.id" class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                  <img :src="item.image" class="w-20 h-20 object-cover rounded-xl shadow-sm">
+                  <div>
+                    <h4 class="text-lg font-bold text-gray-900">{{ item.title }}</h4>
+                    <p class="text-blue-600 font-semibold">{{ item.price }} TL</p>
+                    <p class="text-xs text-gray-400">{{ formatDate(item.date) }}</p>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <span :class="{
+                      'bg-amber-100 text-amber-700': item.status === 'Hazırlanıyor',
+                      'bg-blue-100 text-blue-700': item.status === 'Kargoda' || item.status === 'Kargolandı',
+                      'bg-green-100 text-green-700': item.status === 'Teslim Edildi' || item.status === 'Tamamlandı'
+                    }" class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest">
+                    {{ item.status }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz bir eser satın almadınız.</p>
             </div>
           </div>
-          <div v-if="purchases.length === 0" class="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
-             <p class="text-4xl mb-4">🛍️</p>
-             <p class="text-gray-400 font-bold">Henüz bir eser satın almadınız.</p>
+        </div>
+
+        <div v-if="activeTab === 'enrollments'" class="space-y-6">
+          <h3 class="text-2xl font-bold text-gray-800 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Atölye Rezervasyonlarım
+          </h3>
+          <div v-if="enrollments && enrollments.length > 0" class="space-y-4">
+            <div v-for="enroll in enrollments" :key="enroll.id" class="bg-gray-50 rounded-2xl p-6 border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 class="text-xl font-bold text-gray-800 mb-2">{{ enroll.workshopTitle }}</h4>
+                <div class="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+                  <span class="flex items-center">📅 {{ enroll.reservedDate }}</span>
+                  <span class="flex items-center">👥 {{ enroll.participantCount }} Kişi</span>
+                  <span class="flex items-center">📍 {{ enroll.location }}</span>
+                </div>
+                <span :class="enroll.status === 'Onaylandı' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-amber-100 text-amber-700 border-amber-200'" class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border">
+                  {{ enroll.status }}
+                </span>
+              </div>
+              <div class="flex gap-2">
+                <button v-if="enroll.status !== 'Onaylandı'" @click="openEditModal(enroll)" class="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-lg hover:bg-blue-200 transition-colors">Düzenle</button>
+                <button v-if="enroll.status !== 'Onaylandı'" @click="cancelEnrollment(enroll.id)" class="px-4 py-2 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 transition-colors">İptal Et</button>
+                <span v-else class="text-green-600 font-bold text-sm flex items-center gap-1 bg-green-50 px-4 py-2 rounded-xl border border-green-100">✨ Rezervasyon Kesinleşti</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+            <p class="text-gray-400 italic">Henüz bir atölye rezervasyonunuz bulunmuyor.</p>
+          </div>
+        </div>
+
+        <div v-if="activeTab === 'tickets'" class="space-y-4">
+          <h3 class="text-2xl font-bold text-gray-800 flex items-center gap-2">🎧 Destek Taleplerim</h3>
+          <div v-if="tickets.length > 0" class="space-y-4">
+            <div v-for="ticket in tickets" :key="ticket.ticketId" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-6">
+              <div class="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-xl">🎫</div>
+              <div class="flex-1">
+                <h3 class="font-bold text-gray-900">{{ ticket.subject }}</h3>
+                <p class="text-xs text-gray-400">{{ formatDate(ticket.createdAt) }} • {{ ticket.supportType }}</p>
+              </div>
+              <div class="text-right">
+                <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-black uppercase">{{ translateStatus(ticket.status) }}</span>
+                <router-link :to="`/support/${ticket.ticketId}`" class="block text-xs font-bold text-blue-600 mt-2 hover:underline">Detaylar →</router-link>
+              </div>
+            </div>
+          </div>
+          <div v-else class="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
+             <p class="text-4xl mb-4">🎧</p>
+             <p class="text-gray-400 font-bold">Henüz bir destek talebiniz yok.</p>
+             <router-link to="/support" class="text-blue-600 font-bold mt-2 hover:underline block">Yeni talep oluştur →</router-link>
           </div>
         </div>
 
@@ -113,6 +199,122 @@
           </div>
         </div>
 
+        <div v-if="activeTab === 'sellerOrders'" class="space-y-4">
+          <h3 class="text-2xl font-bold text-gray-800 flex items-center gap-2">⚡ Gelen Siparişler (Satış Onayı)</h3>
+          <div v-if="sellerOrders && sellerOrders.length > 0" class="overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-sm">
+            <table class="min-w-full divide-y divide-gray-200 text-left">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Eser Bilgisi</th>
+                  <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Alıcı</th>
+                  <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Fiyat</th>
+                  <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Durum</th>
+                  <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">İşlem</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200">
+                <tr v-for="order in sellerOrders" :key="order.purchaseId || order.id" class="hover:bg-gray-50 transition-colors">
+                  <td class="px-6 py-4 font-bold text-gray-900">{{ order.title }}</td>
+                  <td class="px-6 py-4 text-sm text-gray-600">{{ order.email }}</td>
+                  <td class="px-6 py-4 font-semibold text-blue-600">{{ order.price }} TL</td>
+                  <td class="px-6 py-4">
+                    <span :class="order.status === 'Onaylandı' || order.status === 'Kargolandı' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'" class="px-3 py-1 rounded-full text-xs font-bold">
+                      {{ order.status }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 text-right">
+                    <button v-if="order.status === 'Hazırlanıyor'" @click="confirmSale(order.purchaseId || order.id)" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all">Onayla</button>
+                    <span v-else class="text-gray-400 text-sm italic">Tamamlandı</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+            <p class="text-gray-400 italic">Henüz bir satış talebi almadınız kanka. 🔍</p>
+          </div>
+        </div>
+
+        <div v-if="activeTab === 'workshopsDashboard'" class="space-y-12">
+          <div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">🎫 Gelen Atölye Başvuruları (Rezervasyon Onayı)</h3>
+            <div v-if="workshopOrders && workshopOrders.length > 0" class="overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-sm">
+              <table class="min-w-full divide-y divide-gray-200 text-left">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Atölye Adı</th>
+                    <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Katılımcı E-posta</th>
+                    <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kişi Sayısı</th>
+                    <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Seçilen Tarih</th>
+                    <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Durum</th>
+                    <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                  <tr v-for="order in workshopOrders" :key="order.id" class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4 font-bold text-gray-900">{{ order.title }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ order.email }}</td>
+                    <td class="px-6 py-4 font-medium text-gray-700">{{ order.participantCount }} Kişi</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">{{ order.reservedDate }}</td>
+                    <td class="px-6 py-4">
+                      <span :class="order.status === 'Onaylandı' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'" class="px-3 py-1 rounded-full text-xs font-bold">
+                        {{ order.status }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                      <button v-if="order.status !== 'Onaylandı'" @click="confirmWorkshopOrder(order.id)" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">Başvuruyu Onayla ✅</button>
+                      <span v-else class="text-green-600 font-bold text-sm italic">Onaylandı</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz bir atölye rezervasyon başvurusu almadınız.</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">🎨 Eklediğim Eserler</h3>
+            <div v-if="myArtworks && myArtworks.length > 0" class="space-y-4">
+              <div v-for="artwork in myArtworks" :key="artwork.id" class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+                <div class="flex items-center space-x-4 flex-1">
+                  <img :src="artwork.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="artwork.title">
+                  <div>
+                    <h4 class="text-lg font-bold text-gray-900">{{ artwork.title }}</h4>
+                    <p class="text-gray-600 text-sm">{{ artwork.description?.substring(0, 50) }}...</p>
+                    <p class="text-green-600 font-semibold mt-1">{{ artwork.price }} TL</p>
+                  </div>
+                </div>
+                <button @click="deleteMyArtwork(artwork.id)" class="ml-4 px-4 py-2 bg-red-100 text-red-600 font-bold rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2">🗑️ Sil</button>
+              </div>
+            </div>
+            <div v-else class="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz eser eklemediniz.</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">🏫 Oluşturduğum Atölyeler</h3>
+            <div v-if="myWorkshops && myWorkshops.length > 0" class="space-y-4">
+              <div v-for="ws in myWorkshops" :key="ws.id" class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+                <div class="flex items-center space-x-4 flex-1">
+                  <img :src="ws.imageUrl || ws.image" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="ws.title">
+                  <div>
+                    <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
+                    <p class="text-gray-500 text-sm">📍 {{ ws.location }} | 📅 {{ ws.availableDates }}</p>
+                    <p class="text-indigo-600 font-semibold mt-1">{{ ws.price }} TL <span class="text-gray-400 text-xs">(Kapasite: {{ ws.capacity }})</span></p>
+                  </div>
+                </div>
+                <button @click="deleteMyWorkshop(ws.id)" class="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors">🗑️ Sil</button>
+              </div>
+            </div>
+            <div v-else class="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+              <p class="text-gray-400 italic">Henüz bir atölye oluşturmadınız.</p>
+            </div>
+          </div>
+        </div>
+
         <div v-if="activeTab === 'edit'" class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm max-w-2xl">
           <h2 class="text-2xl font-black text-gray-900 mb-8">Profil Bilgilerini Güncelle</h2>
           <form @submit.prevent="updateProfile" class="space-y-6">
@@ -134,202 +336,6 @@
           </form>
         </div>
 
-        <div class="mt-8 space-y-12">
-          <div class="bg-blue-50 border-2 border-blue-100 rounded-2xl p-6 flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-              <div class="p-3 bg-blue-600 rounded-xl text-white shadow-lg text-2xl">💰</div>
-              <div>
-                <p class="text-sm font-bold text-blue-600 uppercase tracking-wider">Hesap Bakiyeniz</p>
-                <h3 class="text-3xl font-black text-blue-900">
-                  {{ user?.balance ? user.balance.toLocaleString() : '0' }} TL
-                </h3>
-              </div>
-            </div>
-            <button @click="addBalance" class="px-6 py-3 bg-white border-2 border-blue-600 text-blue-600 font-bold rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
-              + Bakiye Yükle
-            </button>
-          </div>
-
-          <div class="border-t-2 border-gray-100 pt-8">
-            <h3 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">🛍️ Satın Aldığım Eserler Detay</h3>
-            <div v-if="boughtArtworks.length > 0" class="space-y-4">
-              <div v-for="item in boughtArtworks" :key="item.id" class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
-                <div class="flex items-center space-x-4">
-                  <img :src="item.image" class="w-20 h-20 object-cover rounded-xl shadow-sm">
-                  <div>
-                    <h4 class="text-lg font-bold text-gray-900">{{ item.title }}</h4>
-                    <p class="text-blue-600 font-semibold">{{ item.price }} TL</p>
-                    <p class="text-xs text-gray-400">{{ new Date(item.date).toLocaleDateString('tr-TR') }}</p>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <span :class="{
-                      'bg-amber-100 text-amber-700': item.status === 'Hazırlanıyor',
-                      'bg-blue-100 text-blue-700': item.status === 'Kargoda',
-                      'bg-green-100 text-green-700': item.status === 'Teslim Edildi'
-                    }" class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest">
-                    {{ item.status }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-              <p class="text-gray-400 italic">Henüz bir eser satın almadınız.</p>
-            </div>
-          </div>
-
-          <div class="pt-8 border-t-2 border-gray-100">
-            <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 mr-2 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Atölye Rezervasyonlarım
-            </h3>
-            <div v-if="enrollments && enrollments.length > 0" class="space-y-4">
-              <div v-for="enroll in enrollments" :key="enroll.id" class="bg-gray-50 rounded-2xl p-6 border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h4 class="text-xl font-bold text-gray-800 mb-2">{{ enroll.workshopTitle }}</h4>
-                  <div class="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
-                    <span class="flex items-center">📅 {{ enroll.reservedDate }}</span>
-                    <span class="flex items-center">👥 {{ enroll.participantCount }} Kişi</span>
-                    <span class="flex items-center">📍 {{ enroll.location }}</span>
-                  </div>
-                  <span :class="enroll.status === 'Onaylandı' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-amber-100 text-amber-700 border-amber-200'" class="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border">
-                    {{ enroll.status }}
-                  </span>
-                </div>
-                <div class="flex gap-2">
-                  <button v-if="enroll.status !== 'Onaylandı'" @click="openEditModal(enroll)" class="px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded-lg hover:bg-blue-200 transition-colors">Düzenle</button>
-                  <button v-if="enroll.status !== 'Onaylandı'" @click="cancelEnrollment(enroll.id)" class="px-4 py-2 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 transition-colors">İptal Et</button>
-                  <span v-else class="text-green-600 font-bold text-sm flex items-center gap-1 bg-green-50 px-4 py-2 rounded-xl border border-green-100">✨ Rezervasyon Kesinleşti</span>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-              <p class="text-gray-400 italic">Henüz bir atölye rezervasyonunuz bulunmuyor.</p>
-            </div>
-          </div>
-
-          <div v-if="userRole === 'Instructor' || user?.userRole === 'Instructor'">
-            
-            <div class="pt-8 border-t-2 border-gray-100 mt-12">
-              <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">🎨 Gelen Siparişler (Satış Onayı)</h3>
-              <div v-if="sellerOrders && sellerOrders.length > 0" class="overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-sm">
-                <table class="min-w-full divide-y divide-gray-200 text-left">
-                  <thead class="bg-gray-50">
-                    <tr>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Eser Bilgisi</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Alıcı</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Fiyat</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Durum</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">İşlem</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-200">
-                    <tr v-for="order in sellerOrders" :key="order.id" class="hover:bg-gray-50 transition-colors">
-                      <td class="px-6 py-4 font-bold text-gray-900">{{ order.title }}</td>
-                      <td class="px-6 py-4 text-sm text-gray-600">{{ order.email }}</td>
-                      <td class="px-6 py-4 font-semibold text-blue-600">{{ order.price }} TL</td>
-                      <td class="px-6 py-4">
-                        <span :class="order.status === 'Onaylandı' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'" class="px-3 py-1 rounded-full text-xs font-bold">
-                          {{ order.status }}
-                        </span>
-                      </td>
-                      <td class="px-6 py-4 text-right">
-                        <button v-if="order.status === 'Hazırlanıyor'" @click="confirmSale(order.id)" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all">Onayla</button>
-                        <span v-else class="text-gray-400 text-sm italic">Tamamlandı</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                <p class="text-gray-400 italic">Henüz bir satış talebi almadınız.</p>
-              </div>
-            </div>
-
-            <div class="pt-8 border-t-2 border-gray-100 mt-12">
-              <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">🎫 Gelen Atölye Başvuruları (Rezervasyon Onayı)</h3>
-              <div v-if="workshopOrders && workshopOrders.length > 0" class="overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-sm">
-                <table class="min-w-full divide-y divide-gray-200 text-left">
-                  <thead class="bg-gray-50">
-                    <tr>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Atölye Adı</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Katılımcı E-posta</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Kişi Sayısı</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Seçilen Tarih</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Durum</th>
-                      <th class="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">İşlem</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-200">
-                    <tr v-for="order in workshopOrders" :key="order.id" class="hover:bg-gray-50 transition-colors">
-                      <td class="px-6 py-4 font-bold text-gray-900">{{ order.title }}</td>
-                      <td class="px-6 py-4 text-sm text-gray-600">{{ order.email }}</td>
-                      <td class="px-6 py-4 font-medium text-gray-700">{{ order.participantCount }} Kişi</td>
-                      <td class="px-6 py-4 text-sm text-gray-500">{{ order.reservedDate }}</td>
-                      <td class="px-6 py-4">
-                        <span :class="order.status === 'Onaylandı' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'" class="px-3 py-1 rounded-full text-xs font-bold">
-                          {{ order.status }}
-                        </span>
-                      </td>
-                      <td class="px-6 py-4 text-right">
-                        <button v-if="order.status !== 'Onaylandı'" @click="confirmWorkshopOrder(order.id)" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">Başvuruyu Onayla ✅</button>
-                        <span v-else class="text-green-600 font-bold text-sm italic">Onaylandı</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                <p class="text-gray-400 italic">Henüz bir atölye rezervasyon başvurusu almadınız.</p>
-              </div>
-            </div>
-
-            <div class="pt-8 border-t-2 border-gray-100 mt-12">
-              <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">M12 Eklediğim Eserler</h3>
-              <div v-if="myArtworks && myArtworks.length > 0" class="space-y-4">
-                <div v-for="artwork in myArtworks" :key="artwork.id" class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
-                  <div class="flex items-center space-x-4 flex-1">
-                    <img :src="artwork.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="artwork.title">
-                    <div>
-                      <h4 class="text-lg font-bold text-gray-900">{{ artwork.title }}</h4>
-                      <p class="text-gray-600 text-sm">{{ artwork.description?.substring(0, 50) }}...</p>
-                      <p class="text-green-600 font-semibold mt-1">{{ artwork.price }} TL</p>
-                    </div>
-                  </div>
-                  <button @click="deleteMyArtwork(artwork.id)" class="ml-4 px-4 py-2 bg-red-100 text-red-600 font-bold rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2">🗑️ Sil</button>
-                </div>
-              </div>
-              <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                <p class="text-gray-400 italic">Henüz eser eklemediniz.</p>
-              </div>
-            </div>
-
-            <div class="pt-8 border-t-2 border-gray-100 mt-12">
-              <h3 class="text-2xl font-bold text-gray-800 mb-8 flex items-center">Oluşturduğum Atölyeler</h3>
-              <div v-if="myWorkshops && myWorkshops.length > 0" class="space-y-4">
-                <div v-for="ws in myWorkshops" :key="ws.id" class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
-                  <div class="flex items-center space-x-4 flex-1">
-                    <img :src="ws.imageUrl" class="w-20 h-20 object-cover rounded-xl shadow-sm" :alt="ws.title">
-                    <div>
-                      <h4 class="text-lg font-bold text-gray-900">{{ ws.title }}</h4>
-                      <p class="text-gray-500 text-sm">📍 {{ ws.location }} | 📅 {{ ws.availableDates }}</p>
-                      <p class="text-indigo-600 font-semibold mt-1">{{ ws.price }} TL <span class="text-gray-400 text-xs">(Kapasite: {{ ws.capacity }})</span></p>
-                    </div>
-                  </div>
-                  <div class="flex gap-2">
-                    <button @click="deleteMyWorkshop(ws.id)" class="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors">🗑️ Sil</button>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                <p class="text-gray-400 italic">Henüz bir atölye oluşturmadınız.</p>
-              </div>
-            </div>
-
-          </div>
-        </div>
       </div>
     </div>
 
@@ -380,19 +386,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch, nextTick } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import axios from 'axios';
 
 const router = useRouter();
 
-// State Tanımlamaları (Çökmeleri Engelleyen Kısım)
+// State Yönetimi
 const user = ref(null);
 const userRole = ref('User');
 const favorites = ref([]);
 const purchases = ref([]);
 const comparisons = ref([]);
 const enrollments = ref([]);
+const tickets = ref([]);
 const boughtArtworks = ref([]);
 const myArtworks = ref([]);
 const myWorkshops = ref([]);
@@ -408,14 +415,24 @@ const originalParticipantCount = ref(0);
 const editModalPaymentMethod = ref('Kredi Kartı');
 
 const editUser = ref({ firstName: '', lastName: '', biography: '' });
-const passwords = ref({ oldPassword: '', newPassword: '' });
 
-const tabs = [
-  { id: 'favorites', label: 'Favorilerim' },
-  { id: 'orders', label: 'Siparişlerim' },
-  { id: 'comparisons', label: 'Analizlerim' },
-  { id: 'edit', label: 'Düzenle' }
-];
+// 🚀 DİNAMİK SEKMELER: İki tarafın da sekmelerini tek bir akıllı filtrede birleştiriyoruz kanka!
+const visibleTabs = computed(() => {
+  const baseTabs = [
+    { id: 'favorites', label: 'Favorilerim' },
+    { id: 'orders', label: 'Siparişlerim & Cüzdan' },
+    { id: 'enrollments', label: 'Atölye Kayıtlarım' },
+    { id: 'comparisons', label: 'Analizlerim' },
+    { id: 'tickets', label: 'Destek Taleplerim' },
+    { id: 'edit', label: 'Düzenle' }
+  ];
+  if (userRole.value === 'Instructor' || userRole.value === 'Artist') {
+    // Eğitmen sekmelerini araya tıkır tıkır enjekte ediyoruz kanka
+    baseTabs.splice(3, 0, { id: 'sellerOrders', label: '⚡ Gelen Siparişler' });
+    baseTabs.splice(4, 0, { id: 'workshopsDashboard', label: '🏫 Atölye & İçerik Yönetimi' });
+  }
+  return baseTabs;
+});
 
 // 🚀 USER PROFILE DETAYLARINI ÇEKER
 const fetchUser = async () => {
@@ -424,11 +441,10 @@ const fetchUser = async () => {
   try {
     const res = await axios.get(`http://localhost:8080/profile?email=${email}`);
     user.value = res.data;
-    userRole.value = res.data.userRole || res.data.role || 'User';
+    userRole.value = res.data.role || res.data.userRole || 'User';
     editUser.value = { ...res.data };
     
-    // Eğer kullanıcı eğitmense kendi içeriklerini de çekelim
-    if (userRole.value === 'Instructor') {
+    if (userRole.value === 'Instructor' || userRole.value === 'Artist') {
       await fetchUserArtworks(email, `${res.data.firstName} ${res.data.lastName}`);
       await fetchMyWorkshops();
       await fetchSellerOrders();
@@ -445,7 +461,7 @@ const fetchPurchases = async () => {
   try {
     const res = await axios.get(`http://localhost:8080/user-purchases?email=${email}`);
     purchases.value = res.data || [];
-    boughtArtworks.value = res.data || []; // Template'deki iki dizi de besleniyor
+    boughtArtworks.value = res.data || [];
   } catch (e) { 
     console.error("Satın alımlar çekilemedi:", e); 
   }
@@ -460,26 +476,44 @@ const fetchFavorites = async () => {
   } catch (e) { console.error(e); }
 };
 
-// 📊 KIYASLAMALARI GETİRİR
-const fetchComparisons = async () => {
-  const token = localStorage.getItem('userToken');
-  if (!token) return;
+// 🎫 ENES'İN DESTEK TALEPLERİNİ GETİRME FONKSİYONU
+const fetchTickets = async () => {
+  const token = localStorage.getItem('userToken') || localStorage.getItem('token');
   try {
-    const res = await axios.get('http://localhost:8080/comparisons', { headers: { Authorization: `Bearer ${token}` } });
-    comparisons.value = res.data || [];
-  } catch (e) { 
-    console.log("Kıyaslamalar yüklenemedi (veya simüle ediliyor)");
-  }
+    const res = await axios.get('http://localhost:8080/tickets', { headers: { Authorization: `Bearer ${token}` } });
+    tickets.value = res.data || [];
+  } catch (e) { console.error("Destek talepleri yüklenemedi:", e); }
 };
 
-// 📅 ATÖLYE REZERVASYONLARINI GETİRİR
+// 🏫 ATÖLYE REZERVASYONLARINI GETİRİR
 const fetchEnrollments = async () => {
-  const userEmail = localStorage.getItem('userEmail');
+  const email = localStorage.getItem('userEmail');
   try {
-    const res = await axios.get(`http://localhost:8080/user-enrollments?email=${userEmail}`);
+    const res = await axios.get(`http://localhost:8080/user-enrollments?email=${email}`);
     enrollments.value = res.data || [];
   } catch (error) {
     console.error("Rezervasyonlar yüklenemedi:", error);
+  }
+};
+const fetchComparisons = async () => {
+  // 🔥 KESİN ÇÖZÜM: Tanımsız fonksiyonu kaldırıp direkt local veriyi güvenli şekilde okuyoruz kanka!
+  const token = localStorage.getItem('userToken') || localStorage.getItem('token');
+  const userEmail = localStorage.getItem('userEmail');
+
+  if (!token) {
+    console.log("Token bulunamadığı için kıyaslama isteği atılmadı kanka.");
+    return;
+  }
+  try {
+    // Backend'e istek atarken token'ı header katmanında pürüzsüzce gönderiyoruz
+    const res = await axios.get('http://localhost:8080/comparisons', { 
+      headers: { Authorization: `Bearer ${token}` },
+      params: { email: userEmail }
+    });
+    comparisons.value = res.data || [];
+  } catch (e) { 
+    console.error("Kıyaslamalar yüklenemedi kanka:", e);
+    comparisons.value = [];
   }
 };
 
@@ -498,14 +532,14 @@ const fetchUserArtworks = async (userEmail, userName) => {
 const fetchMyWorkshops = async () => {
   const email = localStorage.getItem('userEmail');
   try {
-    const res = await axios.get(`http://localhost:8080/workshops?email=${email}`);
+    const res = await axios.get(`http://localhost:8080/my-workshops?email=${email}`);
     myWorkshops.value = res.data || [];
   } catch (e) { 
     console.error("Atölyeler çekilemedi:", e); 
   }
 };
 
-// 🛍️ GELEN SİPARİŞLER (SATIŞ ONAYI)
+// 🛍️ GELEN SİPARİŞLER
 const fetchSellerOrders = async () => {
   try {
     const userEmail = localStorage.getItem('userEmail'); 
@@ -533,7 +567,7 @@ const fetchWorkshopOrders = async () => {
 const confirmSale = async (purchaseId) => {
   if (!confirm('Bu satışı onaylamak istediğinize emin misiniz?')) return;
   try {
-    await axios.post('http://localhost:8080/confirm-sale', { purchaseId });
+    await axios.post('http://localhost:8080/confirm-sale', { purchaseId: parseInt(purchaseId) });
     alert('Satış başarıyla onaylandı! ✅');
     await fetchSellerOrders();
   } catch (error) {
@@ -628,18 +662,14 @@ const deleteMyArtwork = async (artworkId) => {
   }
 };
 
-// ATÖLYE SİLME
+// ATÖLYE SİLME (Enes'in handler patikasıyla %100 uyumlu kanka)
 const deleteMyWorkshop = async (id) => {
-  if (confirm("Bu atölyeyi silmek istediğinize emin misiniz?")) {
-    try {
-      const userEmail = localStorage.getItem('userEmail');
-      await axios.delete(`http://localhost:8080/delete-workshop?id=${id}`, {
-        data: { workshopId: id, email: userEmail }
-      });
-      alert("Atölye başarıyla silindi.");
-      await fetchUser();
-    } catch (error) { alert("Silme işlemi başarısız."); }
-  }
+  if (!confirm("Bu atölyeyi silmek istediğinize emin misiniz?")) return;
+  try {
+    await axios.delete(`http://localhost:8080/delete-workshop?id=${id}`);
+    alert("Atölye başarıyla silindi! ✨");
+    await fetchUser();
+  } catch (e) { alert("Silme işlemi başarısız."); }
 };
 
 // BAKİYE YÜKLEME
@@ -695,6 +725,11 @@ const logout = () => {
   router.push('/login');
 };
 
+const translateStatus = (status) => {
+  const map = { 'Open': 'Açık', 'Açık': 'Açık', 'Responded': 'Yanıtlandı', 'Beklemede': 'Yanıtlandı', 'Closed': 'Çözüldü', 'Çözüldü': 'Çözüldü' };
+  return map[status] || status;
+};
+
 const formatDate = (d) => {
   if (!d) return '-';
   return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' }).format(new Date(d));
@@ -707,5 +742,6 @@ onMounted(async () => {
   await fetchPurchases();
   await fetchComparisons();
   await fetchEnrollments();
+  await fetchTickets(); // Enes'in getirdiği veriyi de buraya ekledik kanka
 });
 </script>

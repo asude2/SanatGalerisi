@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 py-12 px-6">
     <div v-if="workshop" class="max-w-4xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden">
       <div class="relative h-96">
-        <img :src="workshop.image" class="w-full h-full object-cover" />
+        <img :src="workshop.image" @error="(e) => e.target.src = 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800'" class="w-full h-full object-cover" />
         <button @click="router.back()" class="absolute top-6 left-6 bg-white/90 p-3 rounded-full shadow-lg cursor-pointer">
           ⬅️ Geri Dön
         </button>
@@ -100,7 +100,6 @@
           Ödeme Yap ve Rezervasyon Oluştur 💳
         </button>
 
-        <!-- Yorumlar Bölümü -->
         <CommentSection :targetId="workshop.id" targetType="Workshop" />
       </div>
     </div>
@@ -125,10 +124,9 @@ const reservation = ref({
 })
 
 const today = computed(() => new Date().toISOString().split('T')[0])
-// 🚀 YENİ: Ödeme yöntemi reactive statetimiz (Varsayılan: Kredi Kartı)
 const selectedPaymentMethod = ref('Kredi Kartı')
 
-// Katılımcı sayısı ile ham fiyatı çarpan computed property
+// Katılımcı sayısı ile ham fiyatı çarpan dinamik hesaplayıcın kanka
 const totalWorkshopPrice = computed(() => {
   if (!workshop.value) return 0
   return workshop.value.price * reservation.value.participantCount
@@ -161,7 +159,7 @@ const enroll = async () => {
 
   try {
     const decoded = jwtDecode(token)
-    // 🚀 Geliştirilen payload: Seçilen ödeme yöntemini de backend'e paslıyoruz
+    // 🚀 SENİN CODES: Seçilen ödeme yöntemini ve zırhlandırılmış payload'u backend'e fırlatıyoruz!
     const response = await axios.post('http://localhost:8080/enroll-workshop-payment', {
       email: decoded.email,
       workshopId: workshop.value.id,
@@ -170,8 +168,6 @@ const enroll = async () => {
       paymentMethod: selectedPaymentMethod.value
     })
 
-    alert(response.data.message)
-    router.push('/workshops')
     alert(response.data.message || "Rezervasyon ve ödeme başarılı! 🎉")
     router.push('/profile') 
   } catch (error) {

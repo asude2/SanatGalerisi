@@ -45,12 +45,16 @@ const handleLogin = async () => {
   try {
     const response = await axios.post('http://localhost:8080/login', loginData.value)
     
-      localStorage.setItem('userToken', response.data.token) 
-      localStorage.setItem('userRole', response.data.role);
-      localStorage.setItem('userEmail', loginData.value.email) 
+    // 🔥 MERGE & ZRHLANDIRMA: Enes'in getirdiği userId ile bizim tüm token ihtimallerini tek seferde mühürlüyoruz kanka!
+    localStorage.setItem('userToken', response.data.token) 
+    localStorage.setItem('token', response.data.token) // Kıyaslamaların patlamasını önleyen ek güvence
+    localStorage.setItem('userRole', response.data.role)
+    localStorage.setItem('role', response.data.role)   // Profil sekmelerinin patlamasını önleyen ek güvence
+    localStorage.setItem('userEmail', loginData.value.email) 
+    localStorage.setItem('userId', response.data.userId) // Enes'in getirdiği hayati ID kaydı
       
-      alert('Giriş başarılı!')
-      router.push('/')
+    alert('Giriş başarılı!')
+    router.push('/')
   } catch (error) {
     alert("Giriş hatası!");
   }
