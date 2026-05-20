@@ -144,7 +144,25 @@ const processedWorkshops = computed(() => {
 onMounted(async () => {
   try {
     const response = await axios.get('http://localhost:8080/workshops')
-    workshops.value = response.data || []
+    const all = response.data || []
+
+    // For each workshop, fetch reservations count and filter out full ones
+    const statsPromises = all.map(ws =>
+      axios.get(`http://localhost:8080/entity-stats?targetId=${ws.id || ws.Id}&targetType=Workshop`)
+        .then(res => ({ ws, stats: res.data }))
+        .catch(() => ({ ws, stats: null }))
+    )
+
+    const statsResults = await Promise.all(statsPromises)
+
+    // Keep only workshops where reservations < capacity
+    workshops.value = statsResults
+      .filter(r => {
+        const cap = Number(r.ws.capacity || r.ws.Capacity || 0)
+        const reservations = Number(r.stats?.reservations || 0)
+        return reservations < cap
+      })
+      .map(r => r.ws)
   } catch (error) {
     console.error("Atölyeler yüklenemedi:", error)
   }

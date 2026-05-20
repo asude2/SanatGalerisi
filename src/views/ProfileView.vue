@@ -54,10 +54,13 @@
 
       <div class="space-y-6">
         
-        <div v-if="activeTab === 'favorites'" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div v-for="artwork in favorites" :key="artwork.id" class="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm group">
-            <div class="aspect-square rounded-2xl overflow-hidden mb-4">
+          <div v-if="activeTab === 'favorites'" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div v-for="artwork in favorites" :key="artwork.id" class="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm group relative">
+            <div class="aspect-square rounded-2xl overflow-hidden mb-4 relative">
               <img :src="artwork.imageUrl" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              <button @click.stop="removeFavorite(artwork.id)" title="Favorilerden Kaldır" class="absolute top-3 right-3 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-md hover:bg-red-100 transition-colors">
+                💔
+              </button>
             </div>
             <h3 class="font-bold text-gray-900">{{ artwork.title }}</h3>
             <p class="text-sm text-gray-500 mb-4">{{ artwork.artist }}</p>
@@ -315,25 +318,61 @@
           </div>
         </div>
 
-        <div v-if="activeTab === 'edit'" class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm max-w-2xl">
-          <h2 class="text-2xl font-black text-gray-900 mb-8">Profil Bilgilerini Güncelle</h2>
-          <form @submit.prevent="updateProfile" class="space-y-6">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-2">
-                <label class="text-xs font-black text-gray-400 uppercase ml-1">Ad</label>
-                <input v-model="editUser.firstName" type="text" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all" />
+        <div v-if="activeTab === 'edit'" class="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm max-w-2xl space-y-8">
+          <!-- Profil Bilgileri Güncelleme -->
+          <div>
+            <h2 class="text-2xl font-black text-gray-900 mb-8">Profil Bilgilerini Güncelle</h2>
+            <form @submit.prevent="updateProfile" class="space-y-6">
+              <div class="grid grid-cols-2 gap-4">
+                <div class="space-y-2">
+                  <label class="text-xs font-black text-gray-400 uppercase ml-1">Ad</label>
+                  <input v-model="editUser.firstName" type="text" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all" />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-black text-gray-400 uppercase ml-1">Soyad</label>
+                  <input v-model="editUser.lastName" type="text" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all" />
+                </div>
               </div>
               <div class="space-y-2">
-                <label class="text-xs font-black text-gray-400 uppercase ml-1">Soyad</label>
-                <input v-model="editUser.lastName" type="text" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all" />
+                <label class="text-xs font-black text-gray-400 uppercase ml-1">Biyografi (Sanatçılar İçin)</label>
+                <textarea v-model="editUser.biography" rows="4" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all resize-none"></textarea>
               </div>
-            </div>
-            <div class="space-y-2">
-              <label class="text-xs font-black text-gray-400 uppercase ml-1">Biyografi (Sanatçılar İçin)</label>
-              <textarea v-model="editUser.biography" rows="4" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none transition-all resize-none"></textarea>
-            </div>
-            <button type="submit" class="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">Değişiklikleri Kaydet</button>
-          </form>
+              <button type="submit" class="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">Değişiklikleri Kaydet</button>
+            </form>
+          </div>
+
+          <!-- Şifre Değiştirme Formu -->
+          <div class="border-t-2 border-gray-100 pt-8">
+            <h2 class="text-2xl font-black text-gray-900 mb-8 flex items-center gap-2">🔐 Şifrenizi Değiştirin</h2>
+            <form @submit.prevent="changePassword" class="space-y-6">
+              <div class="space-y-2">
+                <label class="text-xs font-black text-gray-400 uppercase ml-1">Eski Şifre</label>
+                <input v-model="passwordForm.oldPassword" type="password" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-red-500 outline-none transition-all" placeholder="Mevcut şifrenizi girin" required />
+              </div>
+              <div class="grid grid-cols-1 gap-4">
+                <div class="space-y-2">
+                  <label class="text-xs font-black text-gray-400 uppercase ml-1">Yeni Şifre</label>
+                  <input v-model="passwordForm.newPassword" type="password" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all" placeholder="Yeni şifrenizi girin" required />
+                </div>
+                <div class="space-y-2">
+                  <label class="text-xs font-black text-gray-400 uppercase ml-1">Yeni Şifre (Tekrar)</label>
+                  <input v-model="passwordForm.confirmPassword" type="password" class="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-green-500 outline-none transition-all" placeholder="Yeni şifrenizi tekrar girin" required />
+                </div>
+              </div>
+              
+              <div v-if="passwordForm.newPassword && passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword" class="p-4 bg-red-50 rounded-2xl border border-red-200 text-sm text-red-700 font-bold flex items-center gap-2">
+                ⚠️ Yeni şifreler eşleşmiyor!
+              </div>
+
+              <button 
+                type="submit" 
+                :disabled="!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword || passwordForm.newPassword !== passwordForm.confirmPassword"
+                class="w-full py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Şifreyi Değiştir
+              </button>
+            </form>
+          </div>
         </div>
 
       </div>
@@ -415,6 +454,7 @@ const originalParticipantCount = ref(0);
 const editModalPaymentMethod = ref('Kredi Kartı');
 
 const editUser = ref({ firstName: '', lastName: '', biography: '' });
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' });
 
 // 🚀 DİNAMİK SEKMELER: İki tarafın da sekmelerini tek bir akıllı filtrede birleştiriyoruz kanka!
 const visibleTabs = computed(() => {
@@ -598,6 +638,36 @@ const updateProfile = async () => {
   } catch (e) { alert("Hata oluştu."); }
 };
 
+// ŞİFRE DEĞİŞTİRME
+const changePassword = async () => {
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    alert("Yeni şifreler eşleşmiyor! ❌");
+    return;
+  }
+
+  if (passwordForm.value.newPassword.length < 6) {
+    alert("Yeni şifre en az 6 karakter olmalıdır! ❌");
+    return;
+  }
+
+  try {
+    await axios.post('http://localhost:8080/profile/change-password', {
+      email: user.value.email,
+      oldPassword: passwordForm.value.oldPassword,
+      newPassword: passwordForm.value.newPassword
+    });
+    alert("Şifre başarıyla değiştirildi! ✅");
+    passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' };
+  } catch (error) {
+    if (error.response?.status === 401) {
+      alert("Eski şifre hatalı! ❌");
+    } else {
+      alert("Şifre değiştirilemedi. Lütfen tekrar deneyin.");
+    }
+    console.error("Şifre değiştirme hatası:", error);
+  }
+};
+
 // REZERVASYON İPTAL ETME
 const cancelEnrollment = async (id) => {
   if (confirm("Bu rezervasyonu iptal etmek istediğinize emin misiniz?")) {
@@ -659,6 +729,20 @@ const deleteMyArtwork = async (artworkId) => {
       alert("Eser başarıyla silindi.");
       await fetchUser();
     } catch (error) { alert("Eser silinemedi."); }
+  }
+};
+
+// FAVORİDEN KALDIR
+const removeFavorite = async (artworkId) => {
+  if (!confirm("Bu eseri favorilerinizden çıkarmak istiyor musunuz?")) return;
+  try {
+    const userEmail = localStorage.getItem('userEmail');
+    await axios.post('http://localhost:8080/favorites/remove', { email: userEmail, artworkId });
+    alert('Favoriden çıkarıldı.');
+    await fetchFavorites();
+  } catch (e) {
+    alert('Favoriden çıkarılamadı.');
+    console.error('removeFavorite error', e);
   }
 };
 

@@ -290,7 +290,25 @@ onMounted(() => {
   if (token) {
     try {
       const decoded = jwtDecode(token)
-      userName.value = decoded.firstName || 'Kullanıcı'
+      const first = decoded.firstName || ''
+      const last = decoded.lastName || ''
+      if (first || last) {
+        userName.value = `${first}${last ? ' ' + last : ''}`
+      } else {
+        // token doesn't include names; try fetching profile by email stored in localStorage
+        const email = localStorage.getItem('userEmail')
+        if (email) {
+          axios.get(`http://localhost:8080/profile?email=${encodeURIComponent(email)}`)
+            .then(res => {
+              const u = res.data || {}
+              userName.value = (u.firstName || u.FirstName || '') || (u.email || 'Misafir')
+              if (u.lastName || u.LastName) {
+                userName.value = `${u.firstName || u.FirstName}${u.lastName || u.LastName ? ' ' + (u.lastName || u.LastName) : ''}`
+              }
+            })
+            .catch(err => { console.error('Profil çekilemedi:', err) })
+        }
+      }
     } catch (error) {
       console.error('Token çözülemedi:', error)
     }

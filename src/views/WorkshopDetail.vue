@@ -57,9 +57,9 @@
           </h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-2">
-              <label class="text-sm font-bold text-gray-600 ml-1">Katılımcı Sayısı</label>
+              <label class="text-sm font-bold text-gray-600 ml-1">Katılımcı Sayısı {{ capacityDisplay }}</label>
               <select v-model.number="reservation.participantCount" class="w-full p-4 bg-white rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all shadow-sm">
-                <option v-for="n in 10" :key="n" :value="n">{{ n }} Kişi</option>
+                <option v-for="n in remainingCapacity" :key="n" :value="n">{{ n }} Kişi</option>
               </select>
             </div>
             <div class="space-y-2">
@@ -117,6 +117,7 @@ import CommentSection from '../components/CommentSection.vue'
 const route = useRoute()
 const router = useRouter()
 const workshop = ref(null)
+const remainingCapacity = ref(0)
 
 const reservation = ref({
   participantCount: 1,
@@ -125,6 +126,12 @@ const reservation = ref({
 
 const today = computed(() => new Date().toISOString().split('T')[0])
 const selectedPaymentMethod = ref('Kredi Kartı')
+
+// Kalan kontenjan gösterimi
+const capacityDisplay = computed(() => {
+  if (!workshop.value) return ''
+  return `(Kalan: ${remainingCapacity.value}/${workshop.value.capacity})`
+})
 
 // Katılımcı sayısı ile ham fiyatı çarpan dinamik hesaplayıcın kanka
 const totalWorkshopPrice = computed(() => {
@@ -137,6 +144,19 @@ onMounted(async () => {
     const response = await axios.get('http://localhost:8080/workshops')
     const all = response.data
     workshop.value = all.find(w => w.id === parseInt(route.params.id))
+    
+    // Fetch workshop stats to get approved reservations count
+    if (workshop.value) {
+      try {
+        const statsRes = await axios.get(`http://localhost:8080/entity-stats?targetId=${workshop.value.id}&targetType=Workshop`)
+        const approvedReservations = statsRes.data?.reservations || 0
+        const capacity = workshop.value.capacity || 0
+        remainingCapacity.value = capacity - approvedReservations
+      } catch (err) {
+        console.error("Stats fetch failed:", err)
+        remainingCapacity.value = workshop.value.capacity || 0
+      }
+    }
   } catch (error) {
     console.error("Detay yüklenemedi:", error)
   }
@@ -151,6 +171,12 @@ const enroll = async () => {
 
   if (!reservation.value.date) {
     alert("Lütfen bir tarih seçiniz! 📅")
+    return
+  }
+
+  // Validate remaining capacity
+  if (reservation.value.participantCount > remainingCapacity.value) {
+    alert(`❌ Kalan kontenjan yetersiz!\nKalan Kontenjan: ${remainingCapacity.value} kişi\nSeçilen Katılımcı: ${reservation.value.participantCount} kişi`)
     return
   }
 

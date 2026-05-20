@@ -324,7 +324,6 @@ const saveComparison = async () => {
     console.error("Analiz veritabanına yazılırken backend hata döndü:", e);
     // 🔥 KESİN ÇÖZÜM: Backend'den gelen asıl SQL hatasını Alert ile ekrana basıyoruz!
     const errMsg = e.response?.data?.message || "Bilinmeyen Sunucu Hatası";
-    alert("🚨 KAYIT BAŞARISIZ! Backend'in verdiği cevap:\n\n" + errMsg); 
   }
 };
 

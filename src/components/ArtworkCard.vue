@@ -127,7 +127,7 @@ const props = defineProps({
 
 const router = useRouter();
 const isFavorite = ref(false);
-const rating = ref('4.8'); // Varsayılan değer senin zırhından geliyor kanka
+const rating = ref(null); // will be set from entity-stats or artwork prop
 const compareList = ref([]);
 
 const isSold = computed(() => {
@@ -175,15 +175,31 @@ onMounted(async () => {
     }
   }
 
-  // 🚀 ENES'İN DİNAMİK RATİNG MOTORU ENJEKTE EDİLDİ
+  // Fetch avg rating; fall back to artwork-provided rating or 0.0
   if (artworkId) {
     try {
       const statsRes = await axios.get(`http://localhost:8080/entity-stats?targetId=${artworkId}&targetType=Artwork`);
       if (statsRes.data && statsRes.data.avgRating !== undefined && statsRes.data.avgRating > 0) {
         rating.value = Number(statsRes.data.avgRating).toFixed(1);
+      } else if (props.artwork.Rating || props.artwork.rating) {
+        rating.value = Number(props.artwork.Rating || props.artwork.rating).toFixed(1);
+      } else {
+        rating.value = Number(0).toFixed(1);
       }
     } catch (err) {
+      // on error, try fallback
+      if (props.artwork.Rating || props.artwork.rating) {
+        rating.value = Number(props.artwork.Rating || props.artwork.rating).toFixed(1);
+      } else {
+        rating.value = Number(0).toFixed(1);
+      }
       console.error("Rating çekilemedi kanka:", err);
+    }
+  } else {
+    if (props.artwork.Rating || props.artwork.rating) {
+      rating.value = Number(props.artwork.Rating || props.artwork.rating).toFixed(1);
+    } else {
+      rating.value = Number(0).toFixed(1);
     }
   }
 });
